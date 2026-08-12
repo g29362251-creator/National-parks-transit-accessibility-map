@@ -4,6 +4,29 @@
     <meta charset="UTF-8">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
+    <meta name="app-version" content="1">
+    <script>
+    (function () {
+        // Self-healing cache check: if this cached page is older than what's
+        // actually deployed, silently reload once to the fresh version.
+        var CURRENT_VERSION = document.querySelector('meta[name="app-version"]').content;
+        if (sessionStorage.getItem('freshness_checked') === CURRENT_VERSION) return;
+
+        fetch(window.location.pathname + '?_freshcheck=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) { return r.text(); })
+            .then(function (html) {
+                var match = html.match(/name="app-version"\s+content="([^"]+)"/);
+                if (match && match[1] !== CURRENT_VERSION) {
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('_refresh', Date.now());
+                    window.location.replace(url.toString());
+                } else {
+                    sessionStorage.setItem('freshness_checked', CURRENT_VERSION);
+                }
+            })
+            .catch(function () {});
+    })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>National Parks Without a Car</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
