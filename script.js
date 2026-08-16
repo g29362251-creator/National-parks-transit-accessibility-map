@@ -6,6 +6,18 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
 }).addTo(map);
 
+// Defined early, before selectPark or any deep-link/click handler could
+// possibly call clearConnections() — this was the actual bug causing
+// "works once, breaks on refresh": clearConnections used to be defined much
+// further down the file, so loading a page with ?park=... in the URL (which
+// happens automatically after clicking any park) crashed on load, before
+// the rest of the script below that point ever got a chance to run.
+const connectionLines = L.layerGroup().addTo(map);
+
+function clearConnections() {
+    connectionLines.clearLayers();
+}
+
 // Round a raw total_score to the nearest quarter point (e.g. 3.625 -> 3.5, 4.1 -> 4.0)
 function roundToQuarter(n) {
     return Math.round(n * 4) / 4;
@@ -156,12 +168,6 @@ window.toggleAbout = function () {
 // ---------- Airport & Amtrak markers ----------
 const parksByName = {};
 parksData.forEach(p => { parksByName[p.name] = p; });
-
-const connectionLines = L.layerGroup().addTo(map);
-
-function clearConnections() {
-    connectionLines.clearLayers();
-}
 
 function drawConnections(fromLat, fromLng, parkNamesStr, color) {
     clearConnections();
