@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
-    <meta name="app-version" content="2">
+    <meta name="app-version" content="3">
     <script>
     (function () {
         // Self-healing cache check: if this cached page is older than what's
@@ -88,6 +88,10 @@
                         <button class="filter-btn" onclick="toggleYearRound(this)">Year-Round</button>
                     </div>
                     <div class="filter-group">
+                        <button class="filter-btn" onclick="toggleNearbyAirport(this)">&#9992; Airport within 100mi</button>
+                        <button class="filter-btn" onclick="toggleNearbyAmtrak(this)">&#128646; Amtrak within 100mi</button>
+                    </div>
+                    <div class="filter-group">
                         <button id="toggle-airports-btn" class="filter-btn" onclick="toggleAirports()">&#9992; Show Airports</button>
                         <button id="toggle-amtrak-btn" class="filter-btn" onclick="toggleAmtrakLayer()">&#128646; Show Train Stations</button>
                     </div>
@@ -134,9 +138,9 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="parks-data.js?v=1"></script>
-    <script src="transit-points.js?v=1"></script>
-    <script src="script.js?v=2"></script>
+    <script src="parks-data.js?v=2"></script>
+    <script src="transit-points.js?v=2"></script>
+    <script src="script.js?v=3"></script>
     <script data-goatcounter="https://gwalls30.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
 </body>

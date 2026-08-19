@@ -84,6 +84,20 @@ function selectPark(park, opts) {
     }
 }
 
+// ---------- Distance helper (haversine, in miles) ----------
+function haversineMiles(lat1, lng1, lat2, lng2) {
+    const R = 3958.8;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+const NEARBY_RADIUS_MILES = 100;
+
 const markerGroup = {};
 
 parksData.forEach(park => {
@@ -110,7 +124,9 @@ parksData.forEach(park => {
         score: getScoreBucket(displayRating), // bucketed for filtering: -0.5, 0, 1, 2, 3, 4, or 5
         hasShuttle: !!(park.shuttle && park.shuttle.toLowerCase() !== 'none'),
         hasAmtrak: !!(park.amtrak && park.amtrak.toLowerCase() !== 'none' && park.amtrak.trim() !== ''),
-        isYearRound: park.seasonality_score >= 0
+        isYearRound: park.seasonality_score >= 0,
+        nearbyAirports: [],   // filled in below, once transitPoints markers exist
+        nearbyAmtrak: []
     };
 });
 
@@ -207,6 +223,17 @@ function createTransitIcon(emoji, bgColor) {
 const airportLayer = L.layerGroup();
 const amtrakLayer = L.layerGroup();
 
+// Separate layers that only ever hold the subset of airports/stations
+// within NEARBY_RADIUS_MILES of the currently-visible (filtered) parks.
+const nearbyAirportLayer = L.layerGroup();
+const nearbyAmtrakLayer = L.layerGroup();
+
+// Keep a reference to every airport/amtrak marker so the "nearby" layers
+// can reuse the exact same marker instances (same popups, same click
+// handlers) instead of creating duplicates.
+const airportMarkersByCode = {};
+const amtrakMarkersByName = {};
+
 transitPoints.airports.forEach(a => {
     const marker = L.marker([a.lat, a.lng], {
         icon: createTransitIcon('&#9992;', '#3498db')
@@ -220,6 +247,8 @@ transitPoints.airports.forEach(a => {
     marker.on('click', () => {
         drawConnections(a.lat, a.lng, a.servesParks, '#3498db');
     });
+
+    airportMarkersByCode[a.code] = marker;
 });
 
 transitPoints.amtrak.forEach(s => {
@@ -235,6 +264,36 @@ transitPoints.amtrak.forEach(s => {
     marker.on('click', () => {
         drawConnections(s.lat, s.lng, s.servesParks, '#9b59b6');
     });
+
+    amtrakMarkersByName[s.name] = marker;
+});
+
+// ---------- Compute real "within 100 miles" associations ----------
+// This checks EVERY airport/station against EVERY park by actual
+// lat/lng distance — not just the single "nearest" one that was
+// manually curated in parks-data.js — so a park can show multiple
+// nearby airports/stations if more than one happens to be close.
+parksData.forEach(park => {
+    if (park.lat == null || park.lng == null) return;
+    const entry = markerGroup[park.name];
+    if (!entry) return;
+
+    transitPoints.airports.forEach(a => {
+        const d = haversineMiles(park.lat, park.lng, a.lat, a.lng);
+        if (d <= NEARBY_RADIUS_MILES) {
+            entry.nearbyAirports.push(a.code);
+        }
+    });
+
+    transitPoints.amtrak.forEach(s => {
+        const d = haversineMiles(park.lat, park.lng, s.lat, s.lng);
+        if (d <= NEARBY_RADIUS_MILES) {
+            entry.nearbyAmtrak.push(s.name);
+        }
+    });
+
+    entry.hasNearbyAirport = entry.nearbyAirports.length > 0;
+    entry.hasNearbyAmtrak = entry.nearbyAmtrak.length > 0;
 });
 
 window.toggleAirports = function () {
@@ -327,10 +386,14 @@ const activeFilters = {
     scores: new Set(ALL_SCORES),
     shuttleOnly: false,
     amtrakOnly: false,
-    yearRoundOnly: false
+    yearRoundOnly: false,
+    nearbyAirportOnly: false,
+    nearbyAmtrakOnly: false
 };
 
 function applyFilters() {
+    const visibleParkNames = [];
+
     Object.keys(markerGroup).forEach(name => {
         const entry = markerGroup[name];
         let visible = activeFilters.scores.has(entry.score);
@@ -338,14 +401,55 @@ function applyFilters() {
         if (visible && activeFilters.shuttleOnly && !entry.hasShuttle) visible = false;
         if (visible && activeFilters.amtrakOnly && !entry.hasAmtrak) visible = false;
         if (visible && activeFilters.yearRoundOnly && !entry.isYearRound) visible = false;
+        if (visible && activeFilters.nearbyAirportOnly && !entry.hasNearbyAirport) visible = false;
+        if (visible && activeFilters.nearbyAmtrakOnly && !entry.hasNearbyAmtrak) visible = false;
 
         if (visible) {
             if (!map.hasLayer(entry.marker)) map.addLayer(entry.marker);
+            visibleParkNames.push(name);
         } else {
             if (map.hasLayer(entry.marker)) map.removeLayer(entry.marker);
         }
     });
+
+    updateNearbyTransitLayers(visibleParkNames);
     updateFilterBadge();
+}
+
+// Populates nearbyAirportLayer / nearbyAmtrakLayer with only the
+// airports/stations within NEARBY_RADIUS_MILES of the parks currently
+// passing the filters, and shows/hides those layers accordingly.
+function updateNearbyTransitLayers(visibleParkNames) {
+    nearbyAirportLayer.clearLayers();
+    nearbyAmtrakLayer.clearLayers();
+
+    if (activeFilters.nearbyAirportOnly) {
+        const codes = new Set();
+        visibleParkNames.forEach(name => {
+            markerGroup[name].nearbyAirports.forEach(code => codes.add(code));
+        });
+        codes.forEach(code => {
+            const marker = airportMarkersByCode[code];
+            if (marker) nearbyAirportLayer.addLayer(marker);
+        });
+        if (!map.hasLayer(nearbyAirportLayer)) map.addLayer(nearbyAirportLayer);
+    } else if (map.hasLayer(nearbyAirportLayer)) {
+        map.removeLayer(nearbyAirportLayer);
+    }
+
+    if (activeFilters.nearbyAmtrakOnly) {
+        const names = new Set();
+        visibleParkNames.forEach(name => {
+            markerGroup[name].nearbyAmtrak.forEach(stationName => names.add(stationName));
+        });
+        names.forEach(stationName => {
+            const marker = amtrakMarkersByName[stationName];
+            if (marker) nearbyAmtrakLayer.addLayer(marker);
+        });
+        if (!map.hasLayer(nearbyAmtrakLayer)) map.addLayer(nearbyAmtrakLayer);
+    } else if (map.hasLayer(nearbyAmtrakLayer)) {
+        map.removeLayer(nearbyAmtrakLayer);
+    }
 }
 
 function updateFilterBadge() {
@@ -353,7 +457,9 @@ function updateFilterBadge() {
     const total = excludedScores +
         (activeFilters.shuttleOnly ? 1 : 0) +
         (activeFilters.amtrakOnly ? 1 : 0) +
-        (activeFilters.yearRoundOnly ? 1 : 0);
+        (activeFilters.yearRoundOnly ? 1 : 0) +
+        (activeFilters.nearbyAirportOnly ? 1 : 0) +
+        (activeFilters.nearbyAmtrakOnly ? 1 : 0);
 
     const badge = document.getElementById('filter-badge');
     if (total > 0) {
@@ -401,11 +507,25 @@ window.toggleYearRound = function (btn) {
     applyFilters();
 };
 
+window.toggleNearbyAirport = function (btn) {
+    activeFilters.nearbyAirportOnly = !activeFilters.nearbyAirportOnly;
+    btn.classList.toggle('active', activeFilters.nearbyAirportOnly);
+    applyFilters();
+};
+
+window.toggleNearbyAmtrak = function (btn) {
+    activeFilters.nearbyAmtrakOnly = !activeFilters.nearbyAmtrakOnly;
+    btn.classList.toggle('active', activeFilters.nearbyAmtrakOnly);
+    applyFilters();
+};
+
 window.clearFilters = function () {
     activeFilters.scores = new Set(ALL_SCORES);
     activeFilters.shuttleOnly = false;
     activeFilters.amtrakOnly = false;
     activeFilters.yearRoundOnly = false;
+    activeFilters.nearbyAirportOnly = false;
+    activeFilters.nearbyAmtrakOnly = false;
     document.querySelectorAll('.filter-btn').forEach(btn => {
         const onclick = btn.getAttribute('onclick') || '';
         btn.classList.toggle('active', onclick.includes('filterByScore'));
