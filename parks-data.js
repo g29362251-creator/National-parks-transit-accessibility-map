@@ -358,7 +358,7 @@ const parksData = [
     },
     {
         name: "Death Valley National park",
-        state: "California, Nevade",
+        state: "California, Nevada",
         lat: 36.5323,
         lng: -116.8625,
         website: "https://www.nps.gov/deva/index.htm",

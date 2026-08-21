@@ -1,3 +1,6 @@
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
 * {
     margin: 0;
     padding: 0;
@@ -16,11 +19,24 @@ body {
     height: 100vh;
 }
 
+/* ============================================================
+   HEADER
+   ============================================================ */
 header {
     background: #2c3e50;
     color: white;
     padding: 1.25rem 2rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+header h1 {
+    font-size: 26px;
+    margin-bottom: 0.25rem;
+}
+
+header p {
+    font-size: 14px;
+    opacity: 0.9;
 }
 
 .header-top {
@@ -46,6 +62,9 @@ header {
     background: rgba(255,255,255,0.25);
 }
 
+/* ============================================================
+   SEARCH BAR
+   ============================================================ */
 #search-row {
     display: flex;
     gap: 0.5rem;
@@ -75,6 +94,9 @@ header {
     background: #219150;
 }
 
+/* ============================================================
+   ABOUT MODAL
+   ============================================================ */
 #about-overlay {
     position: fixed;
     inset: 0;
@@ -112,7 +134,8 @@ header {
     font-size: 15px;
 }
 
-#about-modal p, #about-modal li {
+#about-modal p,
+#about-modal li {
     font-size: 13px;
     line-height: 1.6;
     color: #444;
@@ -138,16 +161,9 @@ header {
     color: #333;
 }
 
-header h1 {
-    font-size: 26px;
-    margin-bottom: 0.25rem;
-}
-
-header p {
-    font-size: 14px;
-    opacity: 0.9;
-}
-
+/* ============================================================
+   MAIN LAYOUT
+   ============================================================ */
 .content {
     display: flex;
     flex: 1;
@@ -161,6 +177,14 @@ header p {
     position: relative;
 }
 
+#map {
+    flex: 1;
+    z-index: 1;
+}
+
+/* ============================================================
+   FILTER BAR (desktop) & CONTROLS
+   ============================================================ */
 #filters {
     display: flex;
     align-items: center;
@@ -182,9 +206,11 @@ header p {
     font-size: 12px;
     color: #666;
     margin-right: 0.25rem;
+    font-weight: 600;
 }
 
-.filter-btn {
+.filter-btn,
+.filter-select {
     background: transparent;
     border: 1px solid #ccc;
     color: #555;
@@ -193,6 +219,7 @@ header p {
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
+    font-family: inherit;
 }
 
 .filter-btn:hover {
@@ -205,6 +232,14 @@ header p {
     border-color: #2c3e50;
 }
 
+.filter-select {
+    background: white;
+}
+
+.hidden {
+    display: none;
+}
+
 #clear-filters {
     margin-left: auto;
     background: none;
@@ -215,11 +250,32 @@ header p {
     text-decoration: underline;
 }
 
-#map {
-    flex: 1;
-    z-index: 1;
+/* Mobile-only drawer toggle button — hidden on desktop */
+#filters-toggle-btn {
+    display: none;
 }
 
+#filter-badge {
+    background: #e74c3c;
+    color: white;
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+#filter-badge.hidden {
+    display: none;
+}
+
+/* Mobile-only bottom sheet drag handle — hidden on desktop */
+#sheet-handle {
+    display: none;
+}
+
+/* ============================================================
+   SIDEBAR / PARK DETAILS
+   ============================================================ */
 #sidebar {
     width: 350px;
     background: white;
@@ -274,6 +330,9 @@ header p {
     color: #333;
 }
 
+/* ============================================================
+   LEGEND
+   ============================================================ */
 #legend h3 {
     font-size: 16px;
     margin-bottom: 1rem;
@@ -307,6 +366,9 @@ header p {
     background: #e74c3c;
 }
 
+/* ============================================================
+   LEAFLET OVERRIDES
+   ============================================================ */
 .leaflet-popup-content-wrapper {
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
@@ -328,63 +390,139 @@ header p {
     background: white;
 }
 
-#filters-toggle-btn {
-    display: none;
-}
-
-#filter-badge {
-    background: #e74c3c;
-    color: white;
-    border-radius: 10px;
-    padding: 1px 6px;
-    font-size: 11px;
-    margin-left: 4px;
-}
-
-#filter-badge.hidden {
-    display: none;
-}
-
-#sheet-handle {
-    display: none;
-}
-
+/* ============================================================
+   MOBILE (≤768px)
+   ============================================================ */
 @media (max-width: 768px) {
+
+    /* --- Layout: stack map above sidebar instead of side-by-side --- */
     .content {
         flex-direction: column;
     }
 
+    #map-wrap {
+        height: 60vh;
+    }
+
+    /* --- Header: simpler, stacked --- */
+    header {
+        padding: 1rem 1.25rem;
+    }
+
+    header h1 {
+        font-size: 19px;
+    }
+
+    header p {
+        font-size: 12px;
+    }
+
+    .header-top {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    #about-btn {
+        align-self: flex-start;
+    }
+
+    #search-row {
+        max-width: 100%;
+        margin-top: 0.6rem;
+    }
+
+    /* --- Filter drawer toggle button --- */
     #filters-toggle-btn {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         margin: 0.6rem;
         background: white;
         border: 1px solid #ccc;
-        border-radius: 6px;
-        padding: 0.5rem 0.9rem;
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
         font-size: 13px;
+        font-weight: 600;
         cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
+    /* --- Filter drawer itself: animated collapse instead of a hard toggle --- */
     #filters {
-        display: none;
         flex-direction: column;
         align-items: stretch;
+        gap: 0;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        padding: 0 0.75rem;
+        border-bottom: none;
+        transition: max-height 0.3s ease, opacity 0.25s ease, padding 0.25s ease;
     }
 
     #filters.open {
-        display: flex;
+        max-height: 1000px;
+        opacity: 1;
+        padding: 0.5rem 0.75rem 1rem 0.75rem;
+        border-bottom: 1px solid #ddd;
+        overflow-y: auto;
+        max-height: 60vh;
     }
 
-    .filter-btn {
-        min-height: 40px;
+    /* Each filter group becomes its own labeled "card" row, separated
+       by a divider, instead of one dense wrapped wall of buttons */
+    .filter-group {
+        flex-wrap: wrap;
+        width: 100%;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid #eee;
     }
 
+    .filter-group:last-of-type {
+        border-bottom: none;
+    }
+
+    .filter-label {
+        width: 100%;
+        margin-bottom: 0.35rem;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #888;
+    }
+
+    .filter-btn,
+    .filter-select {
+        min-height: 44px;
+        font-size: 13px;
+        padding: 0.5rem 0.9rem;
+    }
+
+    .filter-select {
+        width: 100%;
+    }
+
+    /* "Clear filters" becomes a real full-width tappable button on mobile
+       instead of small underlined text easy to miss */
+    #clear-filters {
+        margin: 0.75rem 0 0.25rem 0;
+        width: 100%;
+        text-align: center;
+        padding: 0.65rem;
+        border: 1px solid #e74c3c;
+        border-radius: 6px;
+        color: #e74c3c;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    /* Prevent iOS Safari's auto-zoom-on-focus for the search input */
     #park-search {
         font-size: 16px;
     }
 
+    /* --- Sidebar becomes a bottom sheet --- */
     #sidebar {
         position: fixed;
         left: 0;
@@ -415,25 +553,5 @@ header p {
         border-radius: 2px;
         margin: 0 auto 0.75rem auto;
         cursor: pointer;
-    }
-
-    #map-wrap {
-        height: 60vh;
-    }
-
-    header {
-        padding: 1rem 1.5rem;
-    }
-
-    header h1 {
-        font-size: 20px;
-    }
-
-    .header-top {
-        flex-direction: column;
-    }
-
-    #search-row {
-        max-width: 100%;
     }
 }

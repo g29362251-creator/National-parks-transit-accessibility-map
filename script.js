@@ -172,6 +172,7 @@ parksData.forEach(park => {
         marker,
         name: park.name,
         state: park.state,
+        states: (park.state || '').split('/').map(s => s.trim()),
         gettingToScore,
         gettingAroundScore,
         combinedScore,
@@ -221,6 +222,59 @@ parksData.forEach(p => {
     opt.value = p.name;
     parkListEl.appendChild(opt);
 });
+
+// ---------- State filter ----------
+// Built dynamically from the actual data, splitting multi-state parks
+// (e.g. Yellowstone's "Wyoming/Montana/Idaho") into individual states.
+const stateFilterEl = document.getElementById('state-filter');
+const uniqueStates = new Set();
+parksData.forEach(p => {
+    (p.state || '').split('/').forEach(s => {
+        const trimmed = s.trim();
+        if (trimmed) uniqueStates.add(trimmed);
+    });
+});
+Array.from(uniqueStates).sort().forEach(state => {
+    const opt = document.createElement('option');
+    opt.value = state;
+    opt.textContent = state;
+    stateFilterEl.appendChild(opt);
+});
+
+window.filterByState = function (value) {
+    activeFilters.state = value;
+    applyFilters();
+    updateParkInStateDropdown(value);
+};
+
+function updateParkInStateDropdown(stateValue) {
+    const sel = document.getElementById('park-in-state');
+    sel.innerHTML = '<option value="">Jump to a park...</option>';
+
+    if (stateValue === 'all') {
+        sel.classList.add('hidden');
+        return;
+    }
+
+    const matches = parksData
+        .filter(p => (p.state || '').split('/').map(s => s.trim()).includes(stateValue))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    matches.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+    });
+
+    sel.classList.remove('hidden');
+}
+
+window.jumpToParkInState = function (name) {
+    if (!name) return;
+    const park = parksData.find(p => p.name === name);
+    if (park) selectPark(park);
+};
 
 function findParkByQuery(query) {
     const q = query.trim().toLowerCase();
@@ -416,6 +470,7 @@ const CATEGORIES = ['easy', 'moderate', 'difficult'];
 const activeFilters = {
     gettingTo: new Set(CATEGORIES),
     gettingAround: new Set(CATEGORIES),
+    state: 'all',
     shuttleOnly: false,
     amtrakOnly: false,
     yearRoundOnly: false
@@ -427,6 +482,7 @@ function applyFilters() {
         let visible = activeFilters.gettingTo.has(entry.gettingToCategory) &&
             activeFilters.gettingAround.has(entry.gettingAroundCategory);
 
+        if (visible && activeFilters.state !== 'all' && !entry.states.includes(activeFilters.state)) visible = false;
         if (visible && activeFilters.shuttleOnly && !entry.hasShuttle) visible = false;
         if (visible && activeFilters.amtrakOnly && !entry.hasAmtrak) visible = false;
         if (visible && activeFilters.yearRoundOnly && !entry.isYearRound) visible = false;
@@ -443,6 +499,7 @@ function applyFilters() {
 function updateFilterBadge() {
     const excluded = (CATEGORIES.length - activeFilters.gettingTo.size) +
         (CATEGORIES.length - activeFilters.gettingAround.size) +
+        (activeFilters.state !== 'all' ? 1 : 0) +
         (activeFilters.shuttleOnly ? 1 : 0) +
         (activeFilters.amtrakOnly ? 1 : 0) +
         (activeFilters.yearRoundOnly ? 1 : 0);
@@ -496,6 +553,9 @@ window.toggleYearRound = function (btn) {
 window.clearFilters = function () {
     activeFilters.gettingTo = new Set(CATEGORIES);
     activeFilters.gettingAround = new Set(CATEGORIES);
+    activeFilters.state = 'all';
+    document.getElementById('state-filter').value = 'all';
+    updateParkInStateDropdown('all');
     activeFilters.shuttleOnly = false;
     activeFilters.amtrakOnly = false;
     activeFilters.yearRoundOnly = false;
