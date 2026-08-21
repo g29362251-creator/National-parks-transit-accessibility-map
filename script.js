@@ -7,41 +7,99 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // Defined early, before selectPark or any deep-link/click handler could
-// possibly call clearConnections() — this was the actual bug causing
-// "works once, breaks on refresh": clearConnections used to be defined much
-// further down the file, so loading a page with ?park=... in the URL (which
-// happens automatically after clicking any park) crashed on load, before
-// the rest of the script below that point ever got a chance to run.
+// possibly call clearConnections().
 const connectionLines = L.layerGroup().addTo(map);
 
 function clearConnections() {
     connectionLines.clearLayers();
 }
 
-// Round a raw total_score to the nearest quarter point (e.g. 3.625 -> 3.5, 4.1 -> 4.0)
-function roundToQuarter(n) {
-    return Math.round(n * 4) / 4;
+// ---------- Two-dimension scoring ----------
+// "Getting To" = can you reach the park at all without a car?
+//   train access + airport proximity + ground transit from airport/town to park
+// "Getting Around" = once you're there, can you get around without a car?
+//   in-park shuttle quality + how much of the year that shuttle actually runs
+
+function parseMilesFromText(str) {
+    if (!str) return null;
+    const text = str.toLowerCase();
+    // Phrasing that means essentially zero distance, even with no number given
+    const zeroDistancePhrases = ['inside', 'at the park', 'direct access', 'right outside', 'outside the entrance', 'entrance to the park'];
+    if (zeroDistancePhrases.some(p => text.includes(p))) return 0;
+    const m = str.match(/(\d+(?:\.\d+)?)\s*mi/i);
+    return m ? parseFloat(m[1]) : null;
 }
 
-// The score shown to users — quarter-point precision instead of a blunt integer
-function getDisplayRating(park) {
-    let r = roundToQuarter(park.total_score);
-    if (r < -0.5) r = -0.5;
-    if (r > 5) r = 5;
-    return r;
+// Starts at 1.5, loses 0.01 for every 2 miles away (0.005/mile) — reaches
+// exactly 0 at 300 miles, floored there for anything farther.
+function distanceScore(miles) {
+    const score = 1.5 - (miles / 2) * 0.01;
+    return Math.max(0, Math.min(1.5, Math.round(score * 100) / 100));
 }
 
-// Buckets a precise rating into the filter categories: -0.5, 0, 1, 2, 3, 4, 5
-function getScoreBucket(displayRating) {
-    if (displayRating <= -0.25) return -0.5;
-    if (displayRating < 0.75) return 0;
-    return Math.round(displayRating);
+function getAirportScore(park) {
+    const miles = parseMilesFromText(park.airport);
+    if (miles == null) return 0;
+    return distanceScore(miles);
 }
 
-function getMarkerColor(rating) {
-    if (rating >= 3) return '#27ae60'; // green
-    if (rating >= 2) return '#f39c12'; // yellow
-    return '#e74c3c'; // red
+function getTrainScore(park) {
+    const miles = parseMilesFromText(park.amtrak);
+    if (miles == null) {
+        // Couldn't find a distance in the text (unusual phrasing, or no
+        // train access at all) — fall back to the originally researched
+        // train_score rather than assuming 0.
+        return park.train_score != null ? park.train_score : 0;
+    }
+    return distanceScore(miles);
+}
+
+function getGettingToScore(park) {
+    const airportScore = getAirportScore(park); // 0-1.5, linear by distance
+    const trainScore = getTrainScore(park); // 0-1.5, linear by distance
+    const groundScore = (park.ground_transit_score || 0) * 2; // rescaled 0-1 -> 0-2
+    const total = trainScore + airportScore + groundScore; // max exactly 5.0
+    return Math.round(total * 10) / 10;
+}
+
+function getGettingAroundScore(park) {
+    const intraScaled = (park.intra_transit_score || 0) * 2.5; // native 0-2 -> 0-5
+    const seasonality = park.seasonality_score || 0; // -0.5 to +0.5, unscaled
+    const total = Math.min(5, intraScaled + seasonality);
+    return Math.round(total * 10) / 10;
+}
+
+function getGettingToCategory(score) {
+    if (score >= 3) return 'easy';
+    if (score >= 2) return 'moderate';
+    return 'difficult';
+}
+
+function getGettingAroundCategory(score) {
+    if (score >= 3) return 'easy';
+    if (score >= 2) return 'moderate';
+    return 'difficult';
+}
+
+function getCombinedScore(gettingToScore, gettingAroundScore) {
+    return Math.round(((gettingToScore + gettingAroundScore) / 2) * 10) / 10;
+}
+
+function categoryColor(cat) {
+    if (cat === 'easy') return '#27ae60';
+    if (cat === 'moderate') return '#f39c12';
+    return '#e74c3c';
+}
+
+function categoryLabel(cat, dimension) {
+    if (dimension === 'to') {
+        if (cat === 'easy') return 'Easy to reach without a car';
+        if (cat === 'moderate') return 'Moderate — reachable with planning';
+        return 'Difficult to reach — a car is likely needed to get there';
+    }
+    if (cat === 'easy') return 'Easy to get around once there';
+    if (cat === 'moderate') return 'Moderate — some walking or waiting';
+    return 'Difficult — limited options once you arrive';
 }
 
 function createMarkerIcon(color) {
@@ -84,36 +142,27 @@ function selectPark(park, opts) {
     }
 }
 
-// ---------- Distance helper (haversine, in miles) ----------
-function haversineMiles(lat1, lng1, lat2, lng2) {
-    const R = 3958.8;
-    const toRad = d => d * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
-
-const NEARBY_RADIUS_MILES = 100;
-
 const markerGroup = {};
 
 parksData.forEach(park => {
     if (park.lat == null || park.lng == null) return;
 
-    const displayRating = getDisplayRating(park);
+    const gettingToScore = getGettingToScore(park);
+    const gettingAroundScore = getGettingAroundScore(park);
+    const gettingToCategory = getGettingToCategory(gettingToScore);
+    const gettingAroundCategory = getGettingAroundCategory(gettingAroundScore);
+    const combinedScore = getCombinedScore(gettingToScore, gettingAroundScore);
+    const combinedCategory = getGettingToCategory(combinedScore); // same thresholds as Getting To
 
     const marker = L.marker([park.lat, park.lng], {
-        icon: createMarkerIcon(getMarkerColor(displayRating))
+        icon: createMarkerIcon(categoryColor(gettingToCategory))
     }).addTo(map);
 
     marker.bindPopup(`
         <div style="min-width: 220px;">
             <h3>${park.name}</h3>
             <p style="margin: 0 0 0.5rem 0; color: #666; font-size: 13px;">${park.state}</p>
-            <p style="margin: 0; font-size: 12px; color: #999;">Score: ${displayRating}/5 — click for details</p>
+            <p style="margin: 0; font-size: 12px; color: #999;">Getting there: ${gettingToScore}/5 (${gettingToCategory}) — click for full details</p>
         </div>
     `);
 
@@ -121,14 +170,49 @@ parksData.forEach(park => {
 
     markerGroup[park.name] = {
         marker,
-        score: getScoreBucket(displayRating), // bucketed for filtering: -0.5, 0, 1, 2, 3, 4, or 5
+        name: park.name,
+        state: park.state,
+        gettingToScore,
+        gettingAroundScore,
+        combinedScore,
+        gettingToCategory,
+        gettingAroundCategory,
+        combinedCategory,
         hasShuttle: !!(park.shuttle && park.shuttle.toLowerCase() !== 'none'),
         hasAmtrak: !!(park.amtrak && park.amtrak.toLowerCase() !== 'none' && park.amtrak.trim() !== ''),
-        isYearRound: park.seasonality_score >= 0,
-        nearbyAirports: [],   // filled in below, once transitPoints markers exist
-        nearbyAmtrak: []
+        isYearRound: park.seasonality_score >= 0
     };
 });
+
+// ---------- Marker color mode (Getting To / Getting Around / Combined) ----------
+let currentColorMode = 'gettingTo';
+const colorModeLabel = {
+    gettingTo: 'Getting there',
+    gettingAround: 'Getting around',
+    combined: 'Combined score'
+};
+
+function recolorMarkers() {
+    Object.values(markerGroup).forEach(entry => {
+        const category = entry[currentColorMode + 'Category'];
+        const score = entry[currentColorMode + 'Score'];
+        entry.marker.setIcon(createMarkerIcon(categoryColor(category)));
+        entry.marker.setPopupContent(`
+            <div style="min-width: 220px;">
+                <h3>${entry.name}</h3>
+                <p style="margin: 0 0 0.5rem 0; color: #666; font-size: 13px;">${entry.state}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">${colorModeLabel[currentColorMode]}: ${score}/5 (${category}) — click for full details</p>
+            </div>
+        `);
+    });
+}
+
+window.setColorMode = function (mode, btn) {
+    currentColorMode = mode;
+    document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    recolorMarkers();
+};
 
 // ---------- Search ----------
 const parkListEl = document.getElementById('park-list');
@@ -223,17 +307,6 @@ function createTransitIcon(emoji, bgColor) {
 const airportLayer = L.layerGroup();
 const amtrakLayer = L.layerGroup();
 
-// Separate layers that only ever hold the subset of airports/stations
-// within NEARBY_RADIUS_MILES of the currently-visible (filtered) parks.
-const nearbyAirportLayer = L.layerGroup();
-const nearbyAmtrakLayer = L.layerGroup();
-
-// Keep a reference to every airport/amtrak marker so the "nearby" layers
-// can reuse the exact same marker instances (same popups, same click
-// handlers) instead of creating duplicates.
-const airportMarkersByCode = {};
-const amtrakMarkersByName = {};
-
 transitPoints.airports.forEach(a => {
     const marker = L.marker([a.lat, a.lng], {
         icon: createTransitIcon('&#9992;', '#3498db')
@@ -247,8 +320,6 @@ transitPoints.airports.forEach(a => {
     marker.on('click', () => {
         drawConnections(a.lat, a.lng, a.servesParks, '#3498db');
     });
-
-    airportMarkersByCode[a.code] = marker;
 });
 
 transitPoints.amtrak.forEach(s => {
@@ -264,36 +335,6 @@ transitPoints.amtrak.forEach(s => {
     marker.on('click', () => {
         drawConnections(s.lat, s.lng, s.servesParks, '#9b59b6');
     });
-
-    amtrakMarkersByName[s.name] = marker;
-});
-
-// ---------- Compute real "within 100 miles" associations ----------
-// This checks EVERY airport/station against EVERY park by actual
-// lat/lng distance — not just the single "nearest" one that was
-// manually curated in parks-data.js — so a park can show multiple
-// nearby airports/stations if more than one happens to be close.
-parksData.forEach(park => {
-    if (park.lat == null || park.lng == null) return;
-    const entry = markerGroup[park.name];
-    if (!entry) return;
-
-    transitPoints.airports.forEach(a => {
-        const d = haversineMiles(park.lat, park.lng, a.lat, a.lng);
-        if (d <= NEARBY_RADIUS_MILES) {
-            entry.nearbyAirports.push(a.code);
-        }
-    });
-
-    transitPoints.amtrak.forEach(s => {
-        const d = haversineMiles(park.lat, park.lng, s.lat, s.lng);
-        if (d <= NEARBY_RADIUS_MILES) {
-            entry.nearbyAmtrak.push(s.name);
-        }
-    });
-
-    entry.hasNearbyAirport = entry.nearbyAirports.length > 0;
-    entry.hasNearbyAmtrak = entry.nearbyAmtrak.length > 0;
 });
 
 window.toggleAirports = function () {
@@ -322,41 +363,33 @@ function showParkInfo(park) {
     document.getElementById('park-name').textContent = park.name;
     document.getElementById('park-location').textContent = park.state;
 
-    const displayRating = getDisplayRating(park);
-
-    let ratingColor = '#e74c3c';
-    let ratingText = 'Difficult — car recommended';
-    if (displayRating >= 3) {
-        ratingColor = '#27ae60';
-        ratingText = 'Easy without a car';
-    } else if (displayRating >= 2) {
-        ratingColor = '#f39c12';
-        ratingText = 'Moderate — doable with planning';
-    }
+    const gettingToScore = getGettingToScore(park);
+    const gettingAroundScore = getGettingAroundScore(park);
+    const toCat = getGettingToCategory(gettingToScore);
+    const aroundCat = getGettingAroundCategory(gettingAroundScore);
+    const airportScore = getAirportScore(park);
+    const trainScore = getTrainScore(park);
+    const groundScore = Math.round((park.ground_transit_score || 0) * 2 * 10) / 10;
 
     document.getElementById('park-details').innerHTML = `
-        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px;">Accessibility Score</div>
-            <div style="font-size: 24px; font-weight: bold; color: ${ratingColor}; margin-bottom: 4px;">${displayRating}/5</div>
-            <div style="font-size: 13px;">${ratingText}</div>
-        </div>
-
-        <div style="margin-bottom: 12px;">
-            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 6px;">Getting There</div>
-            <div style="font-size: 13px; line-height: 1.6;">
-                <strong>Airport:</strong> ${park.airport || 'N/A'}<br>
-                <strong>Amtrak:</strong> ${park.amtrak || 'Not available'}<br>
-                <strong>Shuttle:</strong> ${park.shuttle || 'None'}
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px;">Getting To the Park</div>
+            <div style="font-size: 22px; font-weight: bold; color: ${categoryColor(toCat)}; margin-bottom: 4px;">${gettingToScore}/5</div>
+            <div style="font-size: 13px; margin-bottom: 8px;">${categoryLabel(toCat, 'to')}</div>
+            <div style="font-size: 12px; line-height: 1.7; color: #444;">
+                &#9992; Nearest airport: ${airportScore}/1.5 — ${park.airport || 'N/A'}<br>
+                &#128646; Train access: ${trainScore}/1.5 — ${park.amtrak || 'Not available'}<br>
+                &#128652; Ground transit: ${groundScore}/2.0
             </div>
         </div>
 
-        <div style="margin-bottom: 12px;">
-            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 6px;">Score Breakdown</div>
-            <div style="font-size: 13px; line-height: 1.8;">
-                🚌 Park Transit: ${park.intra_transit_score}/2.0<br>
-                🚂 Train Access: ${park.train_score}/1.5<br>
-                🚍 Ground Transit: ${park.ground_transit_score}/1.0<br>
-                📅 Seasonality: ${park.seasonality_score > 0 ? '+' : ''}${park.seasonality_score}
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px;">Getting Around the Park</div>
+            <div style="font-size: 22px; font-weight: bold; color: ${categoryColor(aroundCat)}; margin-bottom: 4px;">${gettingAroundScore}/5</div>
+            <div style="font-size: 13px; margin-bottom: 8px;">${categoryLabel(aroundCat, 'around')}</div>
+            <div style="font-size: 12px; line-height: 1.7; color: #444;">
+                &#128652; In-park shuttle: ${park.intra_transit_score}/2.0 — ${park.shuttle || 'None'}<br>
+                &#128197; Seasonality: ${park.seasonality_score > 0 ? '+' : ''}${park.seasonality_score} (${park.seasonality_score >= 0 ? 'year-round' : 'seasonal only'})
             </div>
         </div>
 
@@ -379,111 +412,64 @@ document.getElementById('sheet-handle').addEventListener('click', closeParkInfo)
 map.on('click', closeParkInfo);
 
 // ---------- Filters ----------
-// Score buttons work as an "exclude" toggle: every score bucket is included
-// by default, and clicking a button removes/re-adds that bucket.
-const ALL_SCORES = [-0.5, 0, 1, 2, 3, 4, 5];
+const CATEGORIES = ['easy', 'moderate', 'difficult'];
 const activeFilters = {
-    scores: new Set(ALL_SCORES),
+    gettingTo: new Set(CATEGORIES),
+    gettingAround: new Set(CATEGORIES),
     shuttleOnly: false,
     amtrakOnly: false,
-    yearRoundOnly: false,
-    nearbyAirportOnly: false,
-    nearbyAmtrakOnly: false
+    yearRoundOnly: false
 };
 
 function applyFilters() {
-    const visibleParkNames = [];
-
     Object.keys(markerGroup).forEach(name => {
         const entry = markerGroup[name];
-        let visible = activeFilters.scores.has(entry.score);
+        let visible = activeFilters.gettingTo.has(entry.gettingToCategory) &&
+            activeFilters.gettingAround.has(entry.gettingAroundCategory);
 
         if (visible && activeFilters.shuttleOnly && !entry.hasShuttle) visible = false;
         if (visible && activeFilters.amtrakOnly && !entry.hasAmtrak) visible = false;
         if (visible && activeFilters.yearRoundOnly && !entry.isYearRound) visible = false;
-        if (visible && activeFilters.nearbyAirportOnly && !entry.hasNearbyAirport) visible = false;
-        if (visible && activeFilters.nearbyAmtrakOnly && !entry.hasNearbyAmtrak) visible = false;
 
         if (visible) {
             if (!map.hasLayer(entry.marker)) map.addLayer(entry.marker);
-            visibleParkNames.push(name);
         } else {
             if (map.hasLayer(entry.marker)) map.removeLayer(entry.marker);
         }
     });
-
-    updateNearbyTransitLayers(visibleParkNames);
     updateFilterBadge();
 }
 
-// Populates nearbyAirportLayer / nearbyAmtrakLayer with only the
-// airports/stations within NEARBY_RADIUS_MILES of the parks currently
-// passing the filters, and shows/hides those layers accordingly.
-function updateNearbyTransitLayers(visibleParkNames) {
-    nearbyAirportLayer.clearLayers();
-    nearbyAmtrakLayer.clearLayers();
-
-    if (activeFilters.nearbyAirportOnly) {
-        const codes = new Set();
-        visibleParkNames.forEach(name => {
-            markerGroup[name].nearbyAirports.forEach(code => codes.add(code));
-        });
-        codes.forEach(code => {
-            const marker = airportMarkersByCode[code];
-            if (marker) nearbyAirportLayer.addLayer(marker);
-        });
-        if (!map.hasLayer(nearbyAirportLayer)) map.addLayer(nearbyAirportLayer);
-    } else if (map.hasLayer(nearbyAirportLayer)) {
-        map.removeLayer(nearbyAirportLayer);
-    }
-
-    if (activeFilters.nearbyAmtrakOnly) {
-        const names = new Set();
-        visibleParkNames.forEach(name => {
-            markerGroup[name].nearbyAmtrak.forEach(stationName => names.add(stationName));
-        });
-        names.forEach(stationName => {
-            const marker = amtrakMarkersByName[stationName];
-            if (marker) nearbyAmtrakLayer.addLayer(marker);
-        });
-        if (!map.hasLayer(nearbyAmtrakLayer)) map.addLayer(nearbyAmtrakLayer);
-    } else if (map.hasLayer(nearbyAmtrakLayer)) {
-        map.removeLayer(nearbyAmtrakLayer);
-    }
-}
-
 function updateFilterBadge() {
-    const excludedScores = ALL_SCORES.length - activeFilters.scores.size;
-    const total = excludedScores +
+    const excluded = (CATEGORIES.length - activeFilters.gettingTo.size) +
+        (CATEGORIES.length - activeFilters.gettingAround.size) +
         (activeFilters.shuttleOnly ? 1 : 0) +
         (activeFilters.amtrakOnly ? 1 : 0) +
-        (activeFilters.yearRoundOnly ? 1 : 0) +
-        (activeFilters.nearbyAirportOnly ? 1 : 0) +
-        (activeFilters.nearbyAmtrakOnly ? 1 : 0);
+        (activeFilters.yearRoundOnly ? 1 : 0);
 
     const badge = document.getElementById('filter-badge');
-    if (total > 0) {
-        badge.textContent = total;
+    if (excluded > 0) {
+        badge.textContent = excluded;
         badge.classList.remove('hidden');
     } else {
         badge.classList.add('hidden');
     }
 }
 
-// Score buttons are "on" (included) by default — reflect that in the UI
-document.querySelectorAll('.filter-btn').forEach(btn => {
+document.querySelectorAll('.filter-btn:not(.color-mode-btn)').forEach(btn => {
     const onclick = btn.getAttribute('onclick') || '';
-    if (onclick.includes('filterByScore')) {
+    if (onclick.includes('filterByCategory')) {
         btn.classList.add('active');
     }
 });
 
-window.filterByScore = function (score, btn) {
-    if (activeFilters.scores.has(score)) {
-        activeFilters.scores.delete(score);
+window.filterByCategory = function (dimension, category, btn) {
+    const set = activeFilters[dimension];
+    if (set.has(category)) {
+        set.delete(category);
         btn.classList.remove('active');
     } else {
-        activeFilters.scores.add(score);
+        set.add(category);
         btn.classList.add('active');
     }
     applyFilters();
@@ -507,28 +493,15 @@ window.toggleYearRound = function (btn) {
     applyFilters();
 };
 
-window.toggleNearbyAirport = function (btn) {
-    activeFilters.nearbyAirportOnly = !activeFilters.nearbyAirportOnly;
-    btn.classList.toggle('active', activeFilters.nearbyAirportOnly);
-    applyFilters();
-};
-
-window.toggleNearbyAmtrak = function (btn) {
-    activeFilters.nearbyAmtrakOnly = !activeFilters.nearbyAmtrakOnly;
-    btn.classList.toggle('active', activeFilters.nearbyAmtrakOnly);
-    applyFilters();
-};
-
 window.clearFilters = function () {
-    activeFilters.scores = new Set(ALL_SCORES);
+    activeFilters.gettingTo = new Set(CATEGORIES);
+    activeFilters.gettingAround = new Set(CATEGORIES);
     activeFilters.shuttleOnly = false;
     activeFilters.amtrakOnly = false;
     activeFilters.yearRoundOnly = false;
-    activeFilters.nearbyAirportOnly = false;
-    activeFilters.nearbyAmtrakOnly = false;
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('.filter-btn:not(.color-mode-btn)').forEach(btn => {
         const onclick = btn.getAttribute('onclick') || '';
-        btn.classList.toggle('active', onclick.includes('filterByScore'));
+        btn.classList.toggle('active', onclick.includes('filterByCategory'));
     });
     applyFilters();
 };
