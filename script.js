@@ -571,4 +571,13 @@ window.toggleFilterDrawer = function () {
     document.getElementById('filters').classList.toggle('open');
 };
 
+// ---------- Filter tabs (Scores / Location / Amenities) ----------
+window.setFilterTab = function (tab, btn) {
+    document.querySelectorAll('.filter-tab-panel').forEach(panel => {
+        panel.classList.toggle('hidden', panel.getAttribute('data-tab') !== tab);
+    });
+    document.querySelectorAll('.filter-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+};
+
 updateFilterBadge();

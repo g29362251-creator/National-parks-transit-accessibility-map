@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
-    <meta name="app-version" content="6">
+    <meta name="app-version" content="8">
     <script>
     (function () {
         var CURRENT_VERSION = document.querySelector('meta[name="app-version"]').content;
@@ -28,7 +28,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>National Parks Without a Car</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
     <div class="container">
@@ -71,43 +71,59 @@
             <div id="map-wrap">
                 <button id="filters-toggle-btn" onclick="toggleFilterDrawer()">&#128269; Filters <span id="filter-badge" class="hidden">0</span></button>
                 <div id="filters">
-                    <div class="filter-group">
-                        <span class="filter-label">Map colors:</span>
-                        <button class="filter-btn color-mode-btn active" onclick="setColorMode('gettingTo', this)">Getting To</button>
-                        <button class="filter-btn color-mode-btn" onclick="setColorMode('gettingAround', this)">Getting Around</button>
-                        <button class="filter-btn color-mode-btn" onclick="setColorMode('combined', this)">Combined</button>
+                    <div class="filter-tabs">
+                        <button class="filter-tab-btn active" onclick="setFilterTab('scores', this)">Scores</button>
+                        <button class="filter-tab-btn" onclick="setFilterTab('location', this)">Location</button>
+                        <button class="filter-tab-btn" onclick="setFilterTab('amenities', this)">Amenities</button>
                     </div>
-                    <div class="filter-group">
-                        <span class="filter-label">Getting To:</span>
-                        <button class="filter-btn" onclick="filterByCategory('gettingTo', 'easy', this)">Easy</button>
-                        <button class="filter-btn" onclick="filterByCategory('gettingTo', 'moderate', this)">Moderate</button>
-                        <button class="filter-btn" onclick="filterByCategory('gettingTo', 'difficult', this)">Difficult</button>
+
+                    <div class="filter-tab-panel" data-tab="scores">
+                        <div class="filter-group">
+                            <span class="filter-label">Map colors:</span>
+                            <button class="filter-btn color-mode-btn active" onclick="setColorMode('gettingTo', this)">Getting To</button>
+                            <button class="filter-btn color-mode-btn" onclick="setColorMode('gettingAround', this)">Getting Around</button>
+                            <button class="filter-btn color-mode-btn" onclick="setColorMode('combined', this)">Combined</button>
+                        </div>
+                        <div class="filter-group">
+                            <span class="filter-label">Getting To:</span>
+                            <button class="filter-btn" onclick="filterByCategory('gettingTo', 'easy', this)">Easy</button>
+                            <button class="filter-btn" onclick="filterByCategory('gettingTo', 'moderate', this)">Moderate</button>
+                            <button class="filter-btn" onclick="filterByCategory('gettingTo', 'difficult', this)">Difficult</button>
+                        </div>
+                        <div class="filter-group">
+                            <span class="filter-label">Getting Around:</span>
+                            <button class="filter-btn" onclick="filterByCategory('gettingAround', 'easy', this)">Easy</button>
+                            <button class="filter-btn" onclick="filterByCategory('gettingAround', 'moderate', this)">Moderate</button>
+                            <button class="filter-btn" onclick="filterByCategory('gettingAround', 'difficult', this)">Difficult</button>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <span class="filter-label">Getting Around:</span>
-                        <button class="filter-btn" onclick="filterByCategory('gettingAround', 'easy', this)">Easy</button>
-                        <button class="filter-btn" onclick="filterByCategory('gettingAround', 'moderate', this)">Moderate</button>
-                        <button class="filter-btn" onclick="filterByCategory('gettingAround', 'difficult', this)">Difficult</button>
+
+                    <div class="filter-tab-panel hidden" data-tab="location">
+                        <div class="filter-group">
+                            <span class="filter-label">State:</span>
+                            <select id="state-filter" class="filter-select" onchange="filterByState(this.value)">
+                                <option value="all">All States</option>
+                            </select>
+                            <select id="park-in-state" class="filter-select hidden" onchange="jumpToParkInState(this.value)">
+                                <option value="">Jump to a park...</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <span class="filter-label">State:</span>
-                        <select id="state-filter" class="filter-select" onchange="filterByState(this.value)">
-                            <option value="all">All States</option>
-                        </select>
-                        <select id="park-in-state" class="filter-select hidden" onchange="jumpToParkInState(this.value)">
-                            <option value="">Jump to a park...</option>
-                        </select>
+
+                    <div class="filter-tab-panel hidden" data-tab="amenities">
+                        <div class="filter-group">
+                            <button class="filter-btn" onclick="toggleShuttle(this)">Has Shuttle</button>
+                            <button class="filter-btn" onclick="toggleAmtrak(this)">Has Amtrak</button>
+                            <button class="filter-btn" onclick="toggleYearRound(this)">Year-Round</button>
+                        </div>
+                        <div class="filter-group">
+                            <button id="toggle-airports-btn" class="filter-btn" onclick="toggleAirports()">&#9992; Show Airports</button>
+                            <button id="toggle-amtrak-btn" class="filter-btn" onclick="toggleAmtrakLayer()">&#128646; Show Train Stations</button>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <button class="filter-btn" onclick="toggleShuttle(this)">Has Shuttle</button>
-                        <button class="filter-btn" onclick="toggleAmtrak(this)">Has Amtrak</button>
-                        <button class="filter-btn" onclick="toggleYearRound(this)">Year-Round</button>
-                    </div>
-                    <div class="filter-group">
-                        <button id="toggle-airports-btn" class="filter-btn" onclick="toggleAirports()">&#9992; Show Airports</button>
-                        <button id="toggle-amtrak-btn" class="filter-btn" onclick="toggleAmtrakLayer()">&#128646; Show Train Stations</button>
-                    </div>
+
                     <button id="clear-filters" onclick="clearFilters()">Clear filters</button>
+
                 </div>
                 <div id="map"></div>
             </div>
@@ -151,9 +167,9 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="parks-data.js?v=1"></script>
+    <script src="parks-data.js?v=3"></script>
     <script src="transit-points.js?v=1"></script>
-    <script src="script.js?v=6"></script>
+    <script src="script.js?v=8"></script>
     <script data-goatcounter="https://gwalls30.goatcounter.com/count"
             async src="//gc.zgo.at/count.js"></script>
 </body>
