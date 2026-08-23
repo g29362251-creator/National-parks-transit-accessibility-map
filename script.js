@@ -412,6 +412,123 @@ window.toggleAmtrakLayer = function () {
 };
 
 // ---------- Park info panel ----------
+// Known domain -> readable service name, curated from every link source
+// in parks-data.js. Falls back to a capitalized guess for anything new.
+const SERVICE_NAMES = {
+    "abqsunport.com": "Albuquerque Sunport",
+    "airports.hawaii.gov": "Hawaii Airports",
+    "akroncantonairport.com": "Akron-Canton Airport",
+    "alaskaair.com": "Alaska Airlines",
+    "alaskacoach.com": "Alaska Coach",
+    "alaskarailroad.com": "Alaska Railroad",
+    "amtrak.com": "Amtrak",
+    "basin-transit.com": "Basin Transit",
+    "centralcoastshuttle.com": "Central Coast Shuttle",
+    "cityofkeywest-fl.gov": "City of Key West",
+    "clallamtransit.com": "Clallam Transit",
+    "clevelandairport.com": "Cleveland Airport",
+    "clintonairport.com": "Clinton National Airport",
+    "cltairport.com": "Charlotte Douglas Airport",
+    "cogwild.com": "Cog Wild Shuttle",
+    "craterlaketrolley.net": "Crater Lake Trolley",
+    "dickinsonairport.com": "Dickinson Airport",
+    "dolphinshuttle.com": "Dolphin Shuttle",
+    "dot.alaska.gov": "Alaska DOT",
+    "downeasttrans.org": "Downeast Transportation",
+    "drytortugas.com": "Dry Tortugas Ferry",
+    "dungeness-line.com": "Dungeness Line",
+    "elpasointernationalairport.com": "El Paso International Airport",
+    "exitglaciershuttle.com": "Exit Glacier Shuttle",
+    "exploreacadia.com": "Island Explorer (Acadia)",
+    "eyw.com": "Key West International Airport",
+    "flixbus.com": "FlixBus",
+    "flybangor.com": "Bangor International Airport",
+    "flycrw.com": "Yeager Airport",
+    "flydenver.com": "Denver International Airport",
+    "flydulles.com": "Washington Dulles Airport",
+    "flyfresno.com": "Fresno Yosemite Airport",
+    "flyknoxville.com": "Knoxville Airport",
+    "flylax.com": "LAX",
+    "flylouisville.com": "Louisville Airport",
+    "flymaf.com": "Midland Airport",
+    "flymfr.com": "Rogue Valley Airport",
+    "flynashville.com": "Nashville Airport",
+    "flypsp.com": "Palm Springs Airport",
+    "flyqt.ca": "Thunder Bay Airport",
+    "flysanjose.com": "San Jose Airport",
+    "flysmf.gov": "Sacramento Airport",
+    "flystl.com": "St. Louis Lambert Airport",
+    "flytucson.com": "Tucson Airport",
+    "gjairport.com": "Grand Junction Airport",
+    "greyhound.com": "Greyhound",
+    "gtlc.com": "Grand Teton Lodge Co.",
+    "harryreidairport.com": "Harry Reid Airport",
+    "homesteadfl.gov": "City of Homestead",
+    "iflyglacier.com": "Glacier Park International Airport",
+    "interioralaskabusline.com": "Interior Alaska Bus Line",
+    "internationalfallsairport.com": "Falls International Airport",
+    "isleroyaleboats.com": "Isle Royale Boat Service",
+    "jacksonholeairport.com": "Jackson Hole Airport",
+    "juneau.org": "Juneau Airport",
+    "kartbus.org": "Kings Area Rural Transit",
+    "kennicottshuttle.com": "Kennicott Shuttle",
+    "metra.com": "Metra",
+    "metrostlouis.org": "Metro St. Louis",
+    "miami-airport.com": "Miami International Airport",
+    "mysouthshoreline.com": "South Shore Line",
+    "nationalparkexpress.com": "National Park Express",
+    "nps.gov": "NPS.gov",
+    "ogdencity.gov": "City of Ogden",
+    "oregon-point.com": "Oregon POINT",
+    "pinnacles.org": "Pinnacles Shuttle",
+    "portadministration.as.gov": "Pago Pago Airport",
+    "portseattle.org": "Seattle-Tacoma Airport",
+    "rapairport.com": "Rapid City Airport",
+    "redwoodcoasttransit.org": "Redwood Coast Transit",
+    "reservestj.com": "St. John Transit",
+    "ridebustang.com": "Bustang",
+    "riderta.com": "RTA (Akron)",
+    "rtd-denver.com": "RTD Denver",
+    "ruraltransit.org": "Rural Transit",
+    "sartaonline.com": "SARTA (Stark Area Transit)",
+    "skyharbor.com": "Phoenix Sky Harbor Airport",
+    "slcairport.com": "Salt Lake City Airport",
+    "stehekinvalleyadventures.com": "Stehekin Valley Shuttle",
+    "stlouis-mo.gov": "City of St. Louis",
+    "tornadobus.com": "Tornado Bus Company",
+    "vatransit.org": "Virginia Transit Assoc.",
+    "viarail.ca": "VIA Rail Canada",
+    "viport.com": "Virgin Islands Port Authority",
+    "virginiabreeze.drpt.virginia.gov": "Virginia Breeze",
+    "visalia.gov": "Visalia Transit",
+    "yarts.com": "YARTS (Yosemite Transit)"
+};
+
+function serviceNameFromUrl(url) {
+    try {
+        const host = new URL(url).hostname.replace(/^www\./, '');
+        if (SERVICE_NAMES[host]) return SERVICE_NAMES[host];
+        const base = host.split('.').slice(0, -1).join('.') || host;
+        return base
+            .split(/[-_.]/)
+            .filter(Boolean)
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+    } catch (e) {
+        return 'Website';
+    }
+}
+
+// Renders text as a real hyperlink when a clean URL is available, plain
+// text otherwise — never fabricates a search-query link. When there's no
+// descriptive label to hang the link on, falls back to a name derived
+// from the link's own domain rather than a generic placeholder.
+function linkOrText(label, url) {
+    if (!label) return url ? `<a href="${url}" target="_blank" rel="noopener">${serviceNameFromUrl(url)}</a>` : '';
+    if (!url) return label;
+    return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+}
+
 function showParkInfo(park) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = park.name;
@@ -431,9 +548,9 @@ function showParkInfo(park) {
             <div style="font-size: 22px; font-weight: bold; color: ${categoryColor(toCat)}; margin-bottom: 4px;">${gettingToScore}/5</div>
             <div style="font-size: 13px; margin-bottom: 8px;">${categoryLabel(toCat, 'to')}</div>
             <div style="font-size: 12px; line-height: 1.7; color: #444;">
-                &#9992; Nearest airport: ${airportScore}/1.5 — ${park.airport || 'N/A'}<br>
-                &#128646; Train access: ${trainScore}/1.5 — ${park.amtrak || 'Not available'}<br>
-                &#128652; Ground transit: ${groundScore}/2.0
+                &#9992; Nearest airport: ${airportScore}/1.5 — ${linkOrText(park.airport || 'N/A', park.airport_website)}<br>
+                &#128646; Train access: ${trainScore}/1.5 — ${linkOrText(park.amtrak || 'Not available', park.train_website)}<br>
+                &#128652; Ground transit: ${groundScore}/2.0${park.ground_transit_links && park.ground_transit_links.length ? ' — ' + park.ground_transit_links.map(u => `<a href="${u}" target="_blank" rel="noopener">${serviceNameFromUrl(u)}</a>`).join(', ') : ''}
             </div>
         </div>
 
@@ -442,7 +559,7 @@ function showParkInfo(park) {
             <div style="font-size: 22px; font-weight: bold; color: ${categoryColor(aroundCat)}; margin-bottom: 4px;">${gettingAroundScore}/5</div>
             <div style="font-size: 13px; margin-bottom: 8px;">${categoryLabel(aroundCat, 'around')}</div>
             <div style="font-size: 12px; line-height: 1.7; color: #444;">
-                &#128652; In-park shuttle: ${park.intra_transit_score}/2.0 — ${park.shuttle || 'None'}<br>
+                &#128652; In-park shuttle: ${park.intra_transit_score}/2.0 — ${linkOrText(park.shuttle || 'None', park.shuttle_website)}<br>
                 &#128197; Seasonality: ${park.seasonality_score > 0 ? '+' : ''}${park.seasonality_score} (${park.seasonality_score >= 0 ? 'year-round' : 'seasonal only'})
             </div>
         </div>
