@@ -361,18 +361,59 @@ function createTransitIcon(emoji, bgColor) {
 const airportLayer = L.layerGroup();
 const amtrakLayer = L.layerGroup();
 
+// Shows, in the sidebar, how to get from this airport to each park it
+// serves — reusing each park's existing researched `notes` field rather
+// than fabricating new route descriptions.
+function showAirportInfo(airport) {
+    const parkInfo = document.getElementById('park-info');
+    document.getElementById('park-name').textContent = `${airport.name} (${airport.code})`;
+    document.getElementById('park-location').textContent = 'Airport';
+
+    const servedNames = airport.servesParks.split(',').map(s => s.trim());
+    const cards = servedNames.map(name => {
+        const park = parksByName[name];
+        if (!park) return '';
+        const safeName = name.replace(/'/g, "\\'");
+        const airportLine = park.airport
+            ? `<div style="font-size: 12px; color: #666; margin-bottom: 6px;">&#9992; ${park.airport}</div>`
+            : '';
+        const notesText = park.notes && park.notes.trim()
+            ? park.notes
+            : 'See full park details for transit information.';
+        return `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: bold; color: #2c3e50; margin-bottom: 4px;">${park.name}</div>
+                ${airportLine}
+                <div style="font-size: 12px; line-height: 1.6; color: #444; margin-bottom: 8px;">${notesText}</div>
+                <button onclick="jumpToParkFromAirport('${safeName}')" style="font-size: 12px; padding: 6px 10px; background: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer;">View full park details</button>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('park-details').innerHTML = `
+        <div style="font-size: 12px; color: #666; margin-bottom: 12px;">
+            Getting from ${airport.name} to nearby parks:
+        </div>
+        ${cards}
+    `;
+
+    parkInfo.classList.remove('hidden');
+    document.getElementById('sidebar').classList.add('sheet-open');
+}
+
+window.jumpToParkFromAirport = function (name) {
+    const park = parksByName[name];
+    if (park) selectPark(park);
+};
+
 transitPoints.airports.forEach(a => {
     const marker = L.marker([a.lat, a.lng], {
         icon: createTransitIcon('&#9992;', '#3498db')
-    }).bindPopup(`
-        <div style="min-width: 200px;">
-            <h3 style="font-size: 15px;">${a.name} (${a.code})</h3>
-            <p style="margin: 6px 0 0 0; font-size: 12px; color: #666;">Nearest airport for: ${a.servesParks}</p>
-        </div>
-    `).addTo(airportLayer);
+    }).addTo(airportLayer);
 
     marker.on('click', () => {
         drawConnections(a.lat, a.lng, a.servesParks, '#3498db');
+        showAirportInfo(a);
     });
 });
 
@@ -529,6 +570,17 @@ function linkOrText(label, url) {
     return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
 }
 
+// Renders one ground-transit entry. Accepts either a bare URL string
+// (existing data — just shows the service name) or an object
+// { url, description } so a specific entry can note frequency/route
+// details, e.g. { url: "...", description: "Every 30 min, Airport → Visitor Center" }.
+function renderGroundTransitEntry(entry) {
+    const url = typeof entry === 'string' ? entry : entry.url;
+    const description = typeof entry === 'object' && entry.description ? entry.description : null;
+    const name = `<a href="${url}" target="_blank" rel="noopener">${serviceNameFromUrl(url)}</a>`;
+    return description ? `${name} (${description})` : name;
+}
+
 function showParkInfo(park) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = park.name;
@@ -550,7 +602,7 @@ function showParkInfo(park) {
             <div style="font-size: 12px; line-height: 1.7; color: #444;">
                 &#9992; Nearest airport: ${airportScore}/1.5 — ${linkOrText(park.airport || 'N/A', park.airport_website)}<br>
                 &#128646; Train access: ${trainScore}/1.5 — ${linkOrText(park.amtrak || 'Not available', park.train_website)}<br>
-                &#128652; Ground transit: ${groundScore}/2.0${park.ground_transit_links && park.ground_transit_links.length ? ' — ' + park.ground_transit_links.map(u => `<a href="${u}" target="_blank" rel="noopener">${serviceNameFromUrl(u)}</a>`).join(', ') : ''}
+                &#128652; Ground transit: ${groundScore}/2.0${park.ground_transit_links && park.ground_transit_links.length ? ' — ' + park.ground_transit_links.map(renderGroundTransitEntry).join(', ') : ''}
             </div>
         </div>
 

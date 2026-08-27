@@ -1,0 +1,260 @@
+{
+  "Bryce Canyon National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 0.75,
+    "airport_website": [
+      "https://www.harryreidairport.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/flg",
+    "shuttle_website": "https://www.nps.gov/brca/planyourvisit/shuttle.htm",
+    "ground_transit_links": [
+      "https://nationalparkexpress.com/shuttle-services/one-way-shuttle-las-vegas-to-bryce-canyon-nation"
+    ]
+  },
+  "Rocky Mountain Natinoal Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.flydenver.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/gra",
+    "shuttle_website": "https://www.nps.gov/romo/planyourvisit/shuttle-buses-and-public-transit.htm",
+    "ground_transit_links": [
+      "https://www.rtd-denver.com/",
+      "https://ridebustang.com/"
+    ]
+  },
+  "Sequoia National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 0.75,
+    "airport_website": [
+      "https://flyfresno.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/hnf",
+    "shuttle_website": "https://www.nps.gov/seki/planyourvisit/parktransit.htm",
+    "ground_transit_links": [
+      "https://www.ruraltransit.org/route-services/",
+      "https://www.greyhound.com/",
+      "https://www.visalia.gov/338/Transit",
+      "https://www.kartbus.org/",
+      "https://www-"
+    ]
+  },
+  "Zion National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.harryreidairport.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/pro",
+    "shuttle_website": "https://www.nps.gov/zion/planyourvisit/zion-canyon-shuttle-system.htm",
+    "ground_transit_links": [
+      "https://nationalparkexpress.com/shuttle-services/one-way-shuttle-las-vegas-to-springdale/"
+    ]
+  },
+  "Olympic National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.portseattle.org/sea"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/sea",
+    "shuttle_website": "https://www.clallamtransit.com/",
+    "ground_transit_links": [
+      "https://dungeness-line.com/"
+    ]
+  },
+  "Kenai Fjords National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://dot.alaska.gov/anc/"
+    ],
+    "amtrak_website": "https://www.alaskarailroad.com/travel-planning/destinations/seward",
+    "shuttle_website": "https://www.exitglaciershuttle.com/",
+    "ground_transit_links": [
+      "https://www.alaskacoach.com/schedules/"
+    ]
+  },
+  "Gateway National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.flystl.com/"
+    ],
+    "amtrak_website": "https://www.stlouis-mo.gov/government/departments/comptroller/services/Gateway-Transportation-Center.cfm",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://www.metrostlouis.org/"
+    ]
+  },
+  "Cuyahoga Valley National Park": {
+    "intra_transit_score": 1.5,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.clevelandairport.com/",
+      "https://www.akroncantonairport.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/cle",
+    "shuttle_website": "https://www.nps.gov/cuva/planyourvisit/train.htm",
+    "ground_transit_links": [
+      "https://www.flixbus.com/bus-routes/bus-cleveland-oh-akron-oh",
+      "https://www.sartaonline.com/",
+      "https://www.riderta.com/"
+    ]
+  },
+  "Grand Canyon National Park": {
+    "intra_transit_score": 1.5,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.skyharbor.com"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/flg",
+    "shuttle_website": "https://www.nps.gov/grca/planyourvisit/shuttle-buses.htm",
+    "ground_transit_links": [
+      "https://www.skyharbor.com/ground-transportation/phx-sky-train/",
+      "https://www.flixbus.com/?departureCity=1225fb13-2255-4263-a50f-08d088678438&arrivalCity=86278c35-30"
+    ]
+  },
+  "Grand Teton National Park": {
+    "intra_transit_score": 1.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.jacksonholeairport.com/"
+    ],
+    "amtrak_website": "https://www.ogdencity.gov/2277/Union-Station",
+    "shuttle_website": "https://www.gtlc.com/activities/complimentary-guest-shuttle",
+    "ground_transit_links": []
+  },
+  "Acadia National Park": {
+    "intra_transit_score": 1.5,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://flybangor.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/brk",
+    "shuttle_website": "https://www.exploreacadia.com/",
+    "ground_transit_links": [
+      "https://downeasttrans.org/https://www.flixbus.com/"
+    ]
+  },
+  "Denali National Park": {
+    "intra_transit_score": 1.5,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://dot.alaska.gov/faiiap/"
+    ],
+    "amtrak_website": "https://www.alaskarailroad.com/travel-planning/destinations/denali-national-park",
+    "shuttle_website": "https://www.nps.gov/dena/planyourvisit/courtesy-shuttle-buses.htm",
+    "ground_transit_links": []
+  },
+  "Indiana Dunes National Park": {
+    "intra_transit_score": 1.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.flymaf.com/"
+    ],
+    "amtrak_website": "https://mysouthshoreline.com",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://www.nps.gov/indu/planyourvisit/publictransportation.htm",
+      "https://metra.com/"
+    ]
+  },
+  "Channel Islands national park": {
+    "intra_transit_score": 1.5,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.flylax.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/vec",
+    "shuttle_website": "https://www.nps.gov/chis/planyourvisit/island-transportation.htm",
+    "ground_transit_links": [
+      "https://centralcoastshuttle.com/"
+    ]
+  },
+  "American Samoa National Park": {
+    "intra_transit_score": 0.0,
+    "ground_transit_score": 0.75,
+    "airport_website": [
+      "https://portadministration.as.gov/airports/pago-pago-international-airport"
+    ],
+    "amtrak_website": "",
+    "shuttle_website": "",
+    "ground_transit_links": []
+  },
+  "Mammoth Caves National Park": {
+    "intra_transit_score": 0.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://www.flylouisville.com/",
+      "https://flynashville.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/ftn",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://tornadobus.com/en/home/"
+    ]
+  },
+  "Redwood National and State Parks": {
+    "intra_transit_score": 0.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://flymfr.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/kfs",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://www.oregon-point.com/routes/southwest",
+      "https://redwoodcoasttransit.org/"
+    ]
+  },
+  "Joshua Tree National Park": {
+    "intra_transit_score": 0.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://flypsp.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/psn",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://basin-transit.com/"
+    ]
+  },
+  "New River Gorge National Park": {
+    "intra_transit_score": 0.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://flycrw.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/thn",
+    "shuttle_website": "",
+    "ground_transit_links": [
+      "https://www.amtrak.com/stations/hin"
+    ]
+  },
+  "Wrangell-St.Elias National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 0.5,
+    "airport_website": [
+      "https://dot.alaska.gov/anc/"
+    ],
+    "amtrak_website": "https://www.alaskarailroad.com/ride-a-train/depot-locations",
+    "shuttle_website": "https://kennicottshuttle.com/",
+    "ground_transit_links": [
+      "https://interioralaskabusline.com/",
+      "https://kennicottshuttle.com/"
+    ]
+  },
+  "Yosemite National Park": {
+    "intra_transit_score": 2.0,
+    "ground_transit_score": 1.0,
+    "airport_website": [
+      "https://flyfresno.com/"
+    ],
+    "amtrak_website": "https://www.amtrak.com/stations/mcd",
+    "shuttle_website": "https://www.nps.gov/yose/planyourvisit/publictransportation.htm",
+    "ground_transit_links": [
+      "https://www.yarts.com/"
+    ]
+  },
