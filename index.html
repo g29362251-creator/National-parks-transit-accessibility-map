@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
-    <meta name="app-version" content="10">
+    <meta name="app-version" content="11">
     <script>
     (function () {
         var CURRENT_VERSION = document.querySelector('meta[name="app-version"]').content;
@@ -28,7 +28,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>National Parks Without a Car</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
     <div class="container">
@@ -126,6 +126,23 @@
 
                 </div>
                 <div id="map"></div>
+                <div id="trip-widget">
+                    <button id="trip-fab" onclick="toggleTripPanel()">
+                        &#128506; My Trip <span id="trip-count-badge" class="hidden">0</span>
+                    </button>
+                    <div id="trip-panel" class="hidden">
+                        <div id="trip-panel-header">
+                            <h3>My Trip</h3>
+                            <button id="trip-panel-close" onclick="toggleTripPanel()">&times;</button>
+                        </div>
+                        <p id="trip-empty-msg">No parks added yet. Click a park, then "Add to Trip."</p>
+                        <ul id="trip-list"></ul>
+                        <div id="trip-panel-actions">
+                            <button id="trip-zoom-btn" onclick="zoomToTrip()">Zoom to fit</button>
+                            <button id="trip-clear-btn" onclick="clearTrip()">Clear all</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="sidebar">
                 <div id="sheet-handle"></div>
@@ -133,6 +150,7 @@
                     <button id="close-btn" class="close-btn">&times;</button>
                     <h2 id="park-name"></h2>
                     <p id="park-location"></p>
+                    <button id="park-trip-btn" class="trip-toggle-btn"></button>
                     <div id="park-details"></div>
                 </div>
                 <div id="legend">
@@ -169,7 +187,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="parks-data.js?v=5"></script>
     <script src="transit-points.js?v=1"></script>
-    <script src="script.js?v=9"></script>
+    <script src="script.js?v=10"></script>
     <script data-goatcounter="https://gwalls30.goatcounter.com/count"
             async src="//gc.zgo.at/count.js"></script>
 </body>

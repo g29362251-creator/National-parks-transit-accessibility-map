@@ -127,6 +127,163 @@ function closeParkInfo() {
     clearConnections();
 }
 
+// ---------- Trip planning ----------
+// Persisted in localStorage so a trip survives a page refresh. Selected
+// parks get a gold ring marker on the map in addition to their normal
+// color-coded marker, and a floating panel lists/manages the whole trip.
+const TRIP_STORAGE_KEY = 'npwoc_trip_parks';
+
+function loadTripFromStorage() {
+    try {
+        const raw = localStorage.getItem(TRIP_STORAGE_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(arr) ? arr : []);
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveTripToStorage() {
+    try {
+        localStorage.setItem(TRIP_STORAGE_KEY, JSON.stringify([...tripParks]));
+    } catch (e) {
+        // localStorage unavailable (private browsing, storage full, etc.) —
+        // the trip just won't persist across a refresh; nothing else breaks.
+    }
+}
+
+const tripParks = loadTripFromStorage();
+const tripRingMarkers = {}; // park name -> gold ring marker currently on the map
+
+function createTripRingIcon() {
+    return L.divIcon({
+        html: `<div style="
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 3px solid #f1c40f;
+            box-shadow: 0 0 0 2px rgba(241, 196, 15, 0.35);
+        "></div>`,
+        iconSize: [34, 34],
+        className: 'trip-ring-marker'
+    });
+}
+
+// Adds/removes the gold ring for one park based on current trip membership.
+// interactive:false + a very low zIndexOffset keeps it purely decorative —
+// it sits behind the real marker and never intercepts clicks.
+function updateTripRing(parkName) {
+    const entry = markerGroup[parkName];
+    if (!entry) return;
+    const inTrip = tripParks.has(parkName);
+
+    if (inTrip && !tripRingMarkers[parkName]) {
+        tripRingMarkers[parkName] = L.marker(entry.marker.getLatLng(), {
+            icon: createTripRingIcon(),
+            interactive: false,
+            zIndexOffset: -1000
+        }).addTo(map);
+    } else if (!inTrip && tripRingMarkers[parkName]) {
+        map.removeLayer(tripRingMarkers[parkName]);
+        delete tripRingMarkers[parkName];
+    }
+}
+
+function setTripButtonState(btn, parkName) {
+    const inTrip = tripParks.has(parkName);
+    btn.textContent = inTrip ? '\u2713 In Trip \u2014 Remove' : '+ Add to Trip';
+    btn.classList.toggle('in-trip', inTrip);
+}
+
+function updateTripUI() {
+    const badge = document.getElementById('trip-count-badge');
+    const count = tripParks.size;
+    if (count > 0) {
+        badge.textContent = count;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+
+    const list = document.getElementById('trip-list');
+    const emptyMsg = document.getElementById('trip-empty-msg');
+    list.innerHTML = '';
+
+    if (count === 0) {
+        emptyMsg.classList.remove('hidden');
+    } else {
+        emptyMsg.classList.add('hidden');
+        [...tripParks].sort().forEach(name => {
+            const li = document.createElement('li');
+            li.className = 'trip-list-item';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'trip-list-name';
+            nameSpan.textContent = name;
+            nameSpan.addEventListener('click', () => {
+                const park = parksData.find(p => p.name === name);
+                if (park) selectPark(park);
+            });
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'trip-list-remove';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.title = 'Remove from trip';
+            removeBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                toggleTrip(name);
+            });
+
+            li.appendChild(nameSpan);
+            li.appendChild(removeBtn);
+            list.appendChild(li);
+        });
+    }
+}
+
+function toggleTrip(parkName) {
+    if (tripParks.has(parkName)) {
+        tripParks.delete(parkName);
+    } else {
+        tripParks.add(parkName);
+    }
+    saveTripToStorage();
+    updateTripRing(parkName);
+    updateTripUI();
+
+    const btn = document.getElementById('park-trip-btn');
+    if (btn && btn.dataset.parkName === parkName) {
+        setTripButtonState(btn, parkName);
+    }
+}
+
+window.toggleTripPanel = function () {
+    document.getElementById('trip-panel').classList.toggle('hidden');
+};
+
+window.zoomToTrip = function () {
+    if (tripParks.size === 0) return;
+    const bounds = [];
+    tripParks.forEach(name => {
+        const park = parksData.find(p => p.name === name);
+        if (park && park.lat != null && park.lng != null) bounds.push([park.lat, park.lng]);
+    });
+    if (bounds.length === 1) {
+        map.setView(bounds[0], 8);
+    } else if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
+};
+
+window.clearTrip = function () {
+    [...tripParks].forEach(name => {
+        tripParks.delete(name);
+        updateTripRing(name);
+    });
+    saveTripToStorage();
+    updateTripUI();
+};
+
 function selectPark(park, opts) {
     opts = opts || {};
     clearConnections();
@@ -184,6 +341,10 @@ parksData.forEach(park => {
         isYearRound: park.seasonality_score >= 0
     };
 });
+
+// Rehydrate gold rings for any trip saved from a previous session
+tripParks.forEach(name => updateTripRing(name));
+updateTripUI();
 
 // ---------- Marker color mode (Getting To / Getting Around / Combined) ----------
 let currentColorMode = 'gettingTo';
@@ -368,6 +529,12 @@ function showAirportInfo(airport) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = `${airport.name} (${airport.code})`;
     document.getElementById('park-location').textContent = 'Airport';
+
+    // This panel describes an airport, not a park — hide the trip button
+    // rather than showing a stale "Add to Trip" for whichever park was last selected.
+    const tripBtn = document.getElementById('park-trip-btn');
+    tripBtn.classList.add('hidden');
+    delete tripBtn.dataset.parkName;
 
     const servedNames = airport.servesParks.split(',').map(s => s.trim());
     const cards = servedNames.map(name => {
@@ -585,6 +752,12 @@ function showParkInfo(park) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = park.name;
     document.getElementById('park-location').textContent = park.state;
+
+    const tripBtn = document.getElementById('park-trip-btn');
+    tripBtn.classList.remove('hidden');
+    tripBtn.dataset.parkName = park.name;
+    setTripButtonState(tripBtn, park.name);
+    tripBtn.onclick = () => toggleTrip(park.name);
 
     const gettingToScore = getGettingToScore(park);
     const gettingAroundScore = getGettingAroundScore(park);

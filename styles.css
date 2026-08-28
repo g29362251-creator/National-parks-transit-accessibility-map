@@ -405,6 +405,185 @@ header p {
     display: none;
 }
 
+/* ---------- Trip planning widget ---------- */
+#trip-widget {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+}
+
+#trip-fab {
+    background: #2c3e50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.55rem 0.9rem;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#trip-fab:hover {
+    background: #34495e;
+}
+
+#trip-count-badge {
+    background: #f1c40f;
+    color: #2c3e50;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 11px;
+}
+
+#trip-count-badge.hidden {
+    display: none;
+}
+
+#trip-panel {
+    position: absolute;
+    top: 44px;
+    right: 0;
+    width: 280px;
+    max-height: 400px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+#trip-panel.hidden {
+    display: none;
+}
+
+#trip-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+#trip-panel-header h3 {
+    font-size: 15px;
+    color: #2c3e50;
+}
+
+#trip-panel-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #999;
+    line-height: 1;
+}
+
+#trip-panel-close:hover {
+    color: #333;
+}
+
+#trip-empty-msg {
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+}
+
+#trip-list {
+    list-style: none;
+    overflow-y: auto;
+    max-height: 220px;
+    margin: 0.25rem 0 0.75rem 0;
+}
+
+.trip-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+}
+
+.trip-list-item:last-child {
+    border-bottom: none;
+}
+
+.trip-list-name {
+    cursor: pointer;
+    color: #2c3e50;
+}
+
+.trip-list-name:hover {
+    text-decoration: underline;
+}
+
+.trip-list-remove {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 0.25rem;
+}
+
+.trip-list-remove:hover {
+    color: #e74c3c;
+}
+
+#trip-panel-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+#trip-zoom-btn, #trip-clear-btn {
+    flex: 1;
+    border: 1px solid #ccc;
+    background: white;
+    color: #555;
+    border-radius: 4px;
+    padding: 0.4rem;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+#trip-zoom-btn:hover, #trip-clear-btn:hover {
+    background: #f0f0f0;
+}
+
+.trip-toggle-btn {
+    display: block;
+    width: 100%;
+    background: white;
+    border: 1.5px solid #f1c40f;
+    color: #b8860b;
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.trip-toggle-btn:hover {
+    background: #fffbea;
+}
+
+.trip-toggle-btn.in-trip {
+    background: #f1c40f;
+    color: #2c3e50;
+    border-color: #f1c40f;
+}
+
+.trip-toggle-btn.in-trip:hover {
+    background: #f4d03f;
+}
+
 @media (max-width: 768px) {
     .content {
         flex-direction: column;
@@ -499,5 +678,10 @@ header p {
 
     #search-row {
         max-width: 100%;
+    }
+
+    #trip-panel {
+        width: calc(100vw - 24px);
+        max-width: 320px;
     }
 }
