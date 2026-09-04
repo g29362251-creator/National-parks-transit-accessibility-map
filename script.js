@@ -6,32 +6,21 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
 }).addTo(map);
 
-// Defined early, before selectPark or any deep-link/click handler could
-// possibly call clearConnections().
 const connectionLines = L.layerGroup().addTo(map);
 
 function clearConnections() {
     connectionLines.clearLayers();
 }
 
-// ---------- Two-dimension scoring ----------
-// "Getting To" = can you reach the park at all without a car?
-//   train access + airport proximity + ground transit from airport/town to park
-// "Getting Around" = once you're there, can you get around without a car?
-//   in-park shuttle quality + how much of the year that shuttle actually runs
-
 function parseMilesFromText(str) {
     if (!str) return null;
     const text = str.toLowerCase();
-    // Phrasing that means essentially zero distance, even with no number given
     const zeroDistancePhrases = ['inside', 'at the park', 'direct access', 'right outside', 'outside the entrance', 'entrance to the park'];
     if (zeroDistancePhrases.some(p => text.includes(p))) return 0;
     const m = str.match(/(\d+(?:\.\d+)?)\s*mi/i);
     return m ? parseFloat(m[1]) : null;
 }
 
-// Starts at 1.5, loses 0.01 for every 2 miles away (0.005/mile) — reaches
-// exactly 0 at 300 miles, floored there for anything farther.
 function distanceScore(miles) {
     const score = 1.5 - (miles / 2) * 0.01;
     return Math.max(0, Math.min(1.5, Math.round(score * 100) / 100));
@@ -46,25 +35,22 @@ function getAirportScore(park) {
 function getTrainScore(park) {
     const miles = parseMilesFromText(park.amtrak);
     if (miles == null) {
-        // Couldn't find a distance in the text (unusual phrasing, or no
-        // train access at all) — fall back to the originally researched
-        // train_score rather than assuming 0.
         return park.train_score != null ? park.train_score : 0;
     }
     return distanceScore(miles);
 }
 
 function getGettingToScore(park) {
-    const airportScore = getAirportScore(park); // 0-1.5, linear by distance
-    const trainScore = getTrainScore(park); // 0-1.5, linear by distance
-    const groundScore = (park.ground_transit_score || 0) * 2; // rescaled 0-1 -> 0-2
-    const total = trainScore + airportScore + groundScore; // max exactly 5.0
+    const airportScore = getAirportScore(park);
+    const trainScore = getTrainScore(park);
+    const groundScore = (park.ground_transit_score || 0) * 2;
+    const total = trainScore + airportScore + groundScore;
     return Math.round(total * 10) / 10;
 }
 
 function getGettingAroundScore(park) {
-    const intraScaled = (park.intra_transit_score || 0) * 2.5; // native 0-2 -> 0-5
-    const seasonality = park.seasonality_score || 0; // -0.5 to +0.5, unscaled
+    const intraScaled = (park.intra_transit_score || 0) * 2.5;
+    const seasonality = park.seasonality_score || 0;
     const total = Math.min(5, intraScaled + seasonality);
     return Math.round(total * 10) / 10;
 }
@@ -121,168 +107,34 @@ function slugify(name) {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// Straight-line ("as the crow flies") distance in miles between two points
+function haversineMiles(lat1, lng1, lat2, lng2) {
+    const R = 3958.8; // Earth's radius in miles
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+// Closest parks to this one that also have a real ground transit connection
+// (score >= 1), sorted by straight-line distance, nearest first.
+function getNearbyParksWithGroundTransit(park, limit) {
+    limit = limit || 5;
+    return parksData
+        .filter(p => p.name !== park.name && p.lat != null && p.lng != null && (p.ground_transit_score || 0) >= 1)
+        .map(p => ({ park: p, distance: haversineMiles(park.lat, park.lng, p.lat, p.lng) }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, limit);
+}
+
 function closeParkInfo() {
     document.getElementById('park-info').classList.add('hidden');
     document.getElementById('sidebar').classList.remove('sheet-open');
     clearConnections();
 }
-
-// ---------- Trip planning ----------
-// Persisted in localStorage so a trip survives a page refresh. Selected
-// parks get a gold ring marker on the map in addition to their normal
-// color-coded marker, and a floating panel lists/manages the whole trip.
-const TRIP_STORAGE_KEY = 'npwoc_trip_parks';
-
-function loadTripFromStorage() {
-    try {
-        const raw = localStorage.getItem(TRIP_STORAGE_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
-        return new Set(Array.isArray(arr) ? arr : []);
-    } catch (e) {
-        return new Set();
-    }
-}
-
-function saveTripToStorage() {
-    try {
-        localStorage.setItem(TRIP_STORAGE_KEY, JSON.stringify([...tripParks]));
-    } catch (e) {
-        // localStorage unavailable (private browsing, storage full, etc.) —
-        // the trip just won't persist across a refresh; nothing else breaks.
-    }
-}
-
-const tripParks = loadTripFromStorage();
-const tripRingMarkers = {}; // park name -> gold ring marker currently on the map
-
-function createTripRingIcon() {
-    return L.divIcon({
-        html: `<div style="
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            border: 3px solid #f1c40f;
-            box-shadow: 0 0 0 2px rgba(241, 196, 15, 0.35);
-        "></div>`,
-        iconSize: [34, 34],
-        className: 'trip-ring-marker'
-    });
-}
-
-// Adds/removes the gold ring for one park based on current trip membership.
-// interactive:false + a very low zIndexOffset keeps it purely decorative —
-// it sits behind the real marker and never intercepts clicks.
-function updateTripRing(parkName) {
-    const entry = markerGroup[parkName];
-    if (!entry) return;
-    const inTrip = tripParks.has(parkName);
-
-    if (inTrip && !tripRingMarkers[parkName]) {
-        tripRingMarkers[parkName] = L.marker(entry.marker.getLatLng(), {
-            icon: createTripRingIcon(),
-            interactive: false,
-            zIndexOffset: -1000
-        }).addTo(map);
-    } else if (!inTrip && tripRingMarkers[parkName]) {
-        map.removeLayer(tripRingMarkers[parkName]);
-        delete tripRingMarkers[parkName];
-    }
-}
-
-function setTripButtonState(btn, parkName) {
-    const inTrip = tripParks.has(parkName);
-    btn.textContent = inTrip ? '\u2713 In Trip \u2014 Remove' : '+ Add to Trip';
-    btn.classList.toggle('in-trip', inTrip);
-}
-
-function updateTripUI() {
-    const badge = document.getElementById('trip-count-badge');
-    const count = tripParks.size;
-    if (count > 0) {
-        badge.textContent = count;
-        badge.classList.remove('hidden');
-    } else {
-        badge.classList.add('hidden');
-    }
-
-    const list = document.getElementById('trip-list');
-    const emptyMsg = document.getElementById('trip-empty-msg');
-    list.innerHTML = '';
-
-    if (count === 0) {
-        emptyMsg.classList.remove('hidden');
-    } else {
-        emptyMsg.classList.add('hidden');
-        [...tripParks].sort().forEach(name => {
-            const li = document.createElement('li');
-            li.className = 'trip-list-item';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'trip-list-name';
-            nameSpan.textContent = name;
-            nameSpan.addEventListener('click', () => {
-                const park = parksData.find(p => p.name === name);
-                if (park) selectPark(park);
-            });
-
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'trip-list-remove';
-            removeBtn.innerHTML = '&times;';
-            removeBtn.title = 'Remove from trip';
-            removeBtn.addEventListener('click', e => {
-                e.stopPropagation();
-                toggleTrip(name);
-            });
-
-            li.appendChild(nameSpan);
-            li.appendChild(removeBtn);
-            list.appendChild(li);
-        });
-    }
-}
-
-function toggleTrip(parkName) {
-    if (tripParks.has(parkName)) {
-        tripParks.delete(parkName);
-    } else {
-        tripParks.add(parkName);
-    }
-    saveTripToStorage();
-    updateTripRing(parkName);
-    updateTripUI();
-
-    const btn = document.getElementById('park-trip-btn');
-    if (btn && btn.dataset.parkName === parkName) {
-        setTripButtonState(btn, parkName);
-    }
-}
-
-window.toggleTripPanel = function () {
-    document.getElementById('trip-panel').classList.toggle('hidden');
-};
-
-window.zoomToTrip = function () {
-    if (tripParks.size === 0) return;
-    const bounds = [];
-    tripParks.forEach(name => {
-        const park = parksData.find(p => p.name === name);
-        if (park && park.lat != null && park.lng != null) bounds.push([park.lat, park.lng]);
-    });
-    if (bounds.length === 1) {
-        map.setView(bounds[0], 8);
-    } else if (bounds.length > 1) {
-        map.fitBounds(bounds, { padding: [50, 50] });
-    }
-};
-
-window.clearTrip = function () {
-    [...tripParks].forEach(name => {
-        tripParks.delete(name);
-        updateTripRing(name);
-    });
-    saveTripToStorage();
-    updateTripUI();
-};
 
 function selectPark(park, opts) {
     opts = opts || {};
@@ -309,7 +161,7 @@ parksData.forEach(park => {
     const gettingToCategory = getGettingToCategory(gettingToScore);
     const gettingAroundCategory = getGettingAroundCategory(gettingAroundScore);
     const combinedScore = getCombinedScore(gettingToScore, gettingAroundScore);
-    const combinedCategory = getGettingToCategory(combinedScore); // same thresholds as Getting To
+    const combinedCategory = getGettingToCategory(combinedScore);
 
     const marker = L.marker([park.lat, park.lng], {
         icon: createMarkerIcon(categoryColor(gettingToCategory))
@@ -342,11 +194,6 @@ parksData.forEach(park => {
     };
 });
 
-// Rehydrate gold rings for any trip saved from a previous session
-tripParks.forEach(name => updateTripRing(name));
-updateTripUI();
-
-// ---------- Marker color mode (Getting To / Getting Around / Combined) ----------
 let currentColorMode = 'gettingTo';
 const colorModeLabel = {
     gettingTo: 'Getting there',
@@ -376,7 +223,6 @@ window.setColorMode = function (mode, btn) {
     recolorMarkers();
 };
 
-// ---------- Search ----------
 const parkListEl = document.getElementById('park-list');
 parksData.forEach(p => {
     const opt = document.createElement('option');
@@ -384,9 +230,6 @@ parksData.forEach(p => {
     parkListEl.appendChild(opt);
 });
 
-// ---------- State filter ----------
-// Built dynamically from the actual data, splitting multi-state parks
-// (e.g. Yellowstone's "Wyoming/Montana/Idaho") into individual states.
 const stateFilterEl = document.getElementById('state-filter');
 const uniqueStates = new Set();
 parksData.forEach(p => {
@@ -464,12 +307,10 @@ document.getElementById('park-search').addEventListener('keydown', e => {
     }
 });
 
-// ---------- About modal ----------
 window.toggleAbout = function () {
     document.getElementById('about-overlay').classList.toggle('hidden');
 };
 
-// ---------- Deep link on page load ----------
 (function loadFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const slug = params.get('park');
@@ -480,7 +321,6 @@ window.toggleAbout = function () {
     }
 })();
 
-// ---------- Airport & Amtrak markers ----------
 const parksByName = {};
 parksData.forEach(p => { parksByName[p.name] = p; });
 
@@ -529,12 +369,6 @@ function showAirportInfo(airport) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = `${airport.name} (${airport.code})`;
     document.getElementById('park-location').textContent = 'Airport';
-
-    // This panel describes an airport, not a park — hide the trip button
-    // rather than showing a stale "Add to Trip" for whichever park was last selected.
-    const tripBtn = document.getElementById('park-trip-btn');
-    tripBtn.classList.add('hidden');
-    delete tripBtn.dataset.parkName;
 
     const servedNames = airport.servesParks.split(',').map(s => s.trim());
     const cards = servedNames.map(name => {
@@ -619,97 +453,31 @@ window.toggleAmtrakLayer = function () {
     document.getElementById('toggle-amtrak-btn').classList.toggle('active');
 };
 
-// ---------- Park info panel ----------
-// Known domain -> readable service name, curated from every link source
-// in parks-data.js. Falls back to a capitalized guess for anything new.
 const SERVICE_NAMES = {
     "abqsunport.com": "Albuquerque Sunport",
-    "airports.hawaii.gov": "Hawaii Airports",
-    "akroncantonairport.com": "Akron-Canton Airport",
-    "alaskaair.com": "Alaska Airlines",
-    "alaskacoach.com": "Alaska Coach",
-    "alaskarailroad.com": "Alaska Railroad",
     "amtrak.com": "Amtrak",
-    "basin-transit.com": "Basin Transit",
-    "centralcoastshuttle.com": "Central Coast Shuttle",
-    "cityofkeywest-fl.gov": "City of Key West",
-    "clallamtransit.com": "Clallam Transit",
-    "clevelandairport.com": "Cleveland Airport",
-    "clintonairport.com": "Clinton National Airport",
-    "cltairport.com": "Charlotte Douglas Airport",
-    "cogwild.com": "Cog Wild Shuttle",
-    "craterlaketrolley.net": "Crater Lake Trolley",
-    "dickinsonairport.com": "Dickinson Airport",
-    "dolphinshuttle.com": "Dolphin Shuttle",
-    "dot.alaska.gov": "Alaska DOT",
-    "downeasttrans.org": "Downeast Transportation",
-    "drytortugas.com": "Dry Tortugas Ferry",
-    "dungeness-line.com": "Dungeness Line",
-    "elpasointernationalairport.com": "El Paso International Airport",
-    "exitglaciershuttle.com": "Exit Glacier Shuttle",
-    "exploreacadia.com": "Island Explorer (Acadia)",
-    "eyw.com": "Key West International Airport",
-    "flixbus.com": "FlixBus",
-    "flybangor.com": "Bangor International Airport",
-    "flycrw.com": "Yeager Airport",
-    "flydenver.com": "Denver International Airport",
-    "flydulles.com": "Washington Dulles Airport",
-    "flyfresno.com": "Fresno Yosemite Airport",
-    "flyknoxville.com": "Knoxville Airport",
-    "flylax.com": "LAX",
-    "flylouisville.com": "Louisville Airport",
-    "flymaf.com": "Midland Airport",
-    "flymfr.com": "Rogue Valley Airport",
-    "flynashville.com": "Nashville Airport",
-    "flypsp.com": "Palm Springs Airport",
-    "flyqt.ca": "Thunder Bay Airport",
-    "flysanjose.com": "San Jose Airport",
-    "flysmf.gov": "Sacramento Airport",
-    "flystl.com": "St. Louis Lambert Airport",
-    "flytucson.com": "Tucson Airport",
-    "gjairport.com": "Grand Junction Airport",
-    "greyhound.com": "Greyhound",
-    "gtlc.com": "Grand Teton Lodge Co.",
-    "harryreidairport.com": "Harry Reid Airport",
-    "homesteadfl.gov": "City of Homestead",
-    "iflyglacier.com": "Glacier Park International Airport",
-    "interioralaskabusline.com": "Interior Alaska Bus Line",
-    "internationalfallsairport.com": "Falls International Airport",
-    "isleroyaleboats.com": "Isle Royale Boat Service",
-    "jacksonholeairport.com": "Jackson Hole Airport",
-    "juneau.org": "Juneau Airport",
-    "kartbus.org": "Kings Area Rural Transit",
-    "kennicottshuttle.com": "Kennicott Shuttle",
-    "metra.com": "Metra",
-    "metrostlouis.org": "Metro St. Louis",
-    "miami-airport.com": "Miami International Airport",
-    "mysouthshoreline.com": "South Shore Line",
+    "yarts.com": "YARTS (Yosemite Transit)",
     "nationalparkexpress.com": "National Park Express",
-    "nps.gov": "NPS.gov",
-    "ogdencity.gov": "City of Ogden",
-    "oregon-point.com": "Oregon POINT",
-    "pinnacles.org": "Pinnacles Shuttle",
-    "portadministration.as.gov": "Pago Pago Airport",
-    "portseattle.org": "Seattle-Tacoma Airport",
-    "rapairport.com": "Rapid City Airport",
-    "redwoodcoasttransit.org": "Redwood Coast Transit",
-    "reservestj.com": "St. John Transit",
-    "ridebustang.com": "Bustang",
-    "riderta.com": "RTA (Akron)",
-    "rtd-denver.com": "RTD Denver",
-    "ruraltransit.org": "Rural Transit",
-    "sartaonline.com": "SARTA (Stark Area Transit)",
-    "skyharbor.com": "Phoenix Sky Harbor Airport",
-    "slcairport.com": "Salt Lake City Airport",
-    "stehekinvalleyadventures.com": "Stehekin Valley Shuttle",
-    "stlouis-mo.gov": "City of St. Louis",
-    "tornadobus.com": "Tornado Bus Company",
-    "vatransit.org": "Virginia Transit Assoc.",
-    "viarail.ca": "VIA Rail Canada",
-    "viport.com": "Virgin Islands Port Authority",
-    "virginiabreeze.drpt.virginia.gov": "Virginia Breeze",
+    "greyhound.com": "Greyhound",
+    "basin-transit.com": "Basin Transit",
+    "alaskarailroad.com": "Alaska Railroad",
+    "interioralaskabusline.com": "Interior Alaska Bus Line",
+    "kennicottshuttle.com": "Kennicott Shuttle",
     "visalia.gov": "Visalia Transit",
-    "yarts.com": "YARTS (Yosemite Transit)"
+    "sequoiashuttle.com": "Sequoia Shuttle",
+    "islandpackers.com": "Island Packers",
+    "sunline.org": "SunLine Transit",
+    "luxcoachamerica.com": "Lux Coach America",
+    "tornadobus.com": "Tornado Bus Company",
+    "webtec.tornadobus.com": "Tornado Bus Company",
+    "mysouthshoreline.com": "South Shore Line",
+    "transitchicago.com": "Chicago Transit Authority",
+    "riderta.com": "RTA (Akron)",
+    "ridebustang.com": "Bustang",
+    "alaskatravel.com": "Alaska Travel",
+    "mountainstatesexpress.com": "Mountain States Express",
+    "saltlakeexpress.com": "Salt Lake Express",
+    "shop.greyhound.com": "Greyhound"
 };
 
 function serviceNameFromUrl(url) {
@@ -727,37 +495,33 @@ function serviceNameFromUrl(url) {
     }
 }
 
-// Renders text as a real hyperlink when a clean URL is available, plain
-// text otherwise — never fabricates a search-query link. When there's no
-// descriptive label to hang the link on, falls back to a name derived
-// from the link's own domain rather than a generic placeholder.
 function linkOrText(label, url) {
     if (!label) return url ? `<a href="${url}" target="_blank" rel="noopener">${serviceNameFromUrl(url)}</a>` : '';
     if (!url) return label;
     return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
 }
 
-// Renders one ground-transit entry. Accepts either a bare URL string
-// (existing data — just shows the service name) or an object
-// { url, description } so a specific entry can note frequency/route
-// details, e.g. { url: "...", description: "Every 30 min, Airport → Visitor Center" }.
-function renderGroundTransitEntry(entry) {
-    const url = typeof entry === 'string' ? entry : entry.url;
-    const description = typeof entry === 'object' && entry.description ? entry.description : null;
-    const name = `<a href="${url}" target="_blank" rel="noopener">${serviceNameFromUrl(url)}</a>`;
-    return description ? `${name} (${description})` : name;
+// Turns raw URLs inside researched route descriptions into real clickable
+// links (labeled by service name), leaving the surrounding text untouched.
+function linkifyUrls(text) {
+    if (!text) return '';
+    return text.replace(/https?:\/\/[^\s]+/g, url => {
+        const clean = url.replace(/[.,;)]+$/, '');
+        return `<a href="${clean}" target="_blank" rel="noopener">${serviceNameFromUrl(clean)}</a>`;
+    });
+}
+
+// Looks up a researched connection between two parks (order-independent).
+// Returns null if this pair wasn't part of the researched close-pairs list.
+function getConnection(nameA, nameB) {
+    const [p1, p2] = [nameA, nameB].sort();
+    return parkConnections.find(c => c.park1 === p1 && c.park2 === p2) || null;
 }
 
 function showParkInfo(park) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = park.name;
     document.getElementById('park-location').textContent = park.state;
-
-    const tripBtn = document.getElementById('park-trip-btn');
-    tripBtn.classList.remove('hidden');
-    tripBtn.dataset.parkName = park.name;
-    setTripButtonState(tripBtn, park.name);
-    tripBtn.onclick = () => toggleTrip(park.name);
 
     const gettingToScore = getGettingToScore(park);
     const gettingAroundScore = getGettingAroundScore(park);
@@ -775,7 +539,7 @@ function showParkInfo(park) {
             <div style="font-size: 12px; line-height: 1.7; color: #444;">
                 &#9992; Nearest airport: ${airportScore}/1.5 — ${linkOrText(park.airport || 'N/A', park.airport_website)}<br>
                 &#128646; Train access: ${trainScore}/1.5 — ${linkOrText(park.amtrak || 'Not available', park.train_website)}<br>
-                &#128652; Ground transit: ${groundScore}/2.0${park.ground_transit_links && park.ground_transit_links.length ? ' — ' + park.ground_transit_links.map(renderGroundTransitEntry).join(', ') : ''}
+                &#128652; Ground transit: ${groundScore}/2.0${park.ground_transit_links && park.ground_transit_links.length ? ' — ' + park.ground_transit_links.map(u => `<a href="${u}" target="_blank" rel="noopener">${serviceNameFromUrl(u)}</a>`).join(', ') : ''}
             </div>
         </div>
 
@@ -793,6 +557,38 @@ function showParkInfo(park) {
             ${park.notes || ''}
         </div>
 
+        <div style="margin-top: 12px; background: #f8f9fa; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px;">Nearby Parks with Ground Transit (score 1+)</div>
+            ${(() => {
+                const nearby = getNearbyParksWithGroundTransit(park);
+                if (nearby.length === 0) {
+                    return '<div style="font-size: 12px; color: #888;">No nearby parks currently meet this threshold.</div>';
+                }
+                return nearby.map(item => {
+                    const safeName = item.park.name.replace(/'/g, "\\'");
+                    const miles = Math.round(item.distance);
+                    const conn = getConnection(park.name, item.park.name);
+                    let routeHtml = '';
+                    if (conn) {
+                        if (conn.hasRoute) {
+                            routeHtml = `<div style="font-size: 12px; color: #444; line-height: 1.5; margin-top: 6px;">${linkifyUrls(conn.route)}</div>`;
+                        } else {
+                            routeHtml = `<div style="font-size: 11px; color: #999; margin-top: 4px;">No direct public transit connection currently known between these two.</div>`;
+                        }
+                    }
+                    return `
+                        <div style="padding: 8px 0; border-bottom: 1px solid #eee; font-size: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>${item.park.name} <span style="color: #999;">(${miles} mi)</span></span>
+                                <button onclick="jumpToParkFromAirport('${safeName}')" style="font-size: 11px; padding: 4px 8px; background: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer;">View</button>
+                            </div>
+                            ${routeHtml}
+                        </div>
+                    `;
+                }).join('');
+            })()}
+        </div>
+
         <div style="margin-top: 12px;">
             <a href="${park.website}" target="_blank" rel="noopener" style="display: block; padding: 8px; background: #2c3e50; color: white; text-align: center; text-decoration: none; border-radius: 4px; font-size: 12px;">Visit NPS.gov page</a>
         </div>
@@ -807,7 +603,6 @@ document.getElementById('sheet-handle').addEventListener('click', closeParkInfo)
 
 map.on('click', closeParkInfo);
 
-// ---------- Filters ----------
 const CATEGORIES = ['easy', 'moderate', 'difficult'];
 const activeFilters = {
     gettingTo: new Set(CATEGORIES),
@@ -908,12 +703,10 @@ window.clearFilters = function () {
     applyFilters();
 };
 
-// ---------- Mobile filter drawer ----------
 window.toggleFilterDrawer = function () {
     document.getElementById('filters').classList.toggle('open');
 };
 
-// ---------- Filter tabs (Scores / Location / Amenities) ----------
 window.setFilterTab = function (tab, btn) {
     document.querySelectorAll('.filter-tab-panel').forEach(panel => {
         panel.classList.toggle('hidden', panel.getAttribute('data-tab') !== tab);
