@@ -107,9 +107,8 @@ function slugify(name) {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-// Straight-line ("as the crow flies") distance in miles between two points
 function haversineMiles(lat1, lng1, lat2, lng2) {
-    const R = 3958.8; // Earth's radius in miles
+    const R = 3958.8;
     const toRad = d => d * Math.PI / 180;
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1);
@@ -119,8 +118,6 @@ function haversineMiles(lat1, lng1, lat2, lng2) {
     return R * c;
 }
 
-// Closest parks to this one that also have a real ground transit connection
-// (score >= 1), sorted by straight-line distance, nearest first.
 function getNearbyParksWithGroundTransit(park, limit) {
     limit = limit || 5;
     return parksData
@@ -214,6 +211,10 @@ function recolorMarkers() {
             </div>
         `);
     });
+    // Recoloring resets every marker's icon, so trip highlights need reapplying
+    if (typeof myTrip !== 'undefined') {
+        myTrip.forEach(name => highlightTripMarker(name, true));
+    }
 }
 
 window.setColorMode = function (mode, btn) {
@@ -362,9 +363,6 @@ function createTransitIcon(emoji, bgColor) {
 const airportLayer = L.layerGroup();
 const amtrakLayer = L.layerGroup();
 
-// Shows, in the sidebar, how to get from this airport to each park it
-// serves — reusing each park's existing researched `notes` field rather
-// than fabricating new route descriptions.
 function showAirportInfo(airport) {
     const parkInfo = document.getElementById('park-info');
     document.getElementById('park-name').textContent = `${airport.name} (${airport.code})`;
@@ -398,6 +396,7 @@ function showAirportInfo(airport) {
         ${cards}
     `;
 
+    document.getElementById('park-trip-btn').style.display = 'none';
     parkInfo.classList.remove('hidden');
     document.getElementById('sidebar').classList.add('sheet-open');
 }
@@ -496,13 +495,12 @@ function serviceNameFromUrl(url) {
 }
 
 function linkOrText(label, url) {
+    if (Array.isArray(url)) url = url.length ? url[0] : null;
     if (!label) return url ? `<a href="${url}" target="_blank" rel="noopener">${serviceNameFromUrl(url)}</a>` : '';
     if (!url) return label;
     return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
 }
 
-// Turns raw URLs inside researched route descriptions into real clickable
-// links (labeled by service name), leaving the surrounding text untouched.
 function linkifyUrls(text) {
     if (!text) return '';
     return text.replace(/https?:\/\/[^\s]+/g, url => {
@@ -511,12 +509,182 @@ function linkifyUrls(text) {
     });
 }
 
-// Looks up a researched connection between two parks (order-independent).
-// Returns null if this pair wasn't part of the researched close-pairs list.
 function getConnection(nameA, nameB) {
     const [p1, p2] = [nameA, nameB].sort();
     return parkConnections.find(c => c.park1 === p1 && c.park2 === p2) || null;
 }
+
+// ---------- My Trip ----------
+let myTrip = [];
+try {
+    const saved = localStorage.getItem('myTrip');
+    if (saved) myTrip = JSON.parse(saved);
+} catch (e) {
+    myTrip = [];
+}
+
+function saveTrip() {
+    try {
+        localStorage.setItem('myTrip', JSON.stringify(myTrip));
+    } catch (e) { /* ignore storage errors (e.g. private browsing) */ }
+}
+
+function isInTrip(name) {
+    return myTrip.includes(name);
+}
+
+// Redraws a park's marker with a gold ring when it's part of the trip,
+// or back to its normal look when it's removed.
+function highlightTripMarker(name, on) {
+    const entry = markerGroup[name];
+    if (!entry) return;
+    if (on) {
+        const color = categoryColor(entry[currentColorMode + 'Category']);
+        entry.marker.setIcon(L.divIcon({
+            html: `<div style="
+                background-color: ${color};
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                border: 4px solid #f1c40f;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            "></div>`,
+            iconSize: [32, 32],
+            className: 'trip-marker-highlight'
+        }));
+    } else {
+        entry.marker.setIcon(createMarkerIcon(categoryColor(entry[currentColorMode + 'Category'])));
+    }
+}
+
+// Updates the "Add to Trip" button in the park sidebar to reflect whether
+// this park is currently in the trip, and wires up its click handler.
+function updateTripButton(park) {
+    const btn = document.getElementById('park-trip-btn');
+    if (!btn) return;
+    btn.style.display = '';
+    if (isInTrip(park.name)) {
+        btn.textContent = '\u2212 Remove from Trip';
+        btn.classList.add('in-trip');
+    } else {
+        btn.textContent = '+ Add to Trip';
+        btn.classList.remove('in-trip');
+    }
+    btn.onclick = () => window.toggleTripForPark(park.name);
+}
+
+window.toggleTripForPark = function (name) {
+    if (isInTrip(name)) {
+        myTrip = myTrip.filter(n => n !== name);
+        highlightTripMarker(name, false);
+    } else {
+        myTrip.push(name);
+        highlightTripMarker(name, true);
+    }
+    saveTrip();
+    renderTripPanel();
+    const park = parksByName[name];
+    if (park && document.getElementById('park-name').textContent === park.name) {
+        updateTripButton(park);
+    }
+};
+
+function renderTripCount() {
+    const badge = document.getElementById('trip-count-badge');
+    if (myTrip.length > 0) {
+        badge.textContent = myTrip.length;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+// Shows how to get between two consecutive trip stops: the real researched
+// public transit route when one exists between this pair, plus flying as a
+// general alternative (always offered, since it's always technically an
+// option regardless of ground transit).
+function renderTripConnector(parkA, parkB) {
+    const conn = getConnection(parkA.name, parkB.name);
+    let transitHtml = '';
+    if (conn && conn.hasRoute) {
+        transitHtml = `
+            <div style="font-size: 11px; color: #444; line-height: 1.5; margin-top: 4px;">
+                <strong>&#128652; Public transit:</strong> ${linkifyUrls(conn.route)}
+            </div>
+        `;
+    }
+
+    const flyHtml = `
+        <div style="font-size: 11px; color: #444; line-height: 1.5; margin-top: 4px;">
+            <strong>&#9992; Flying:</strong> ${linkOrText(parkA.airport || 'nearest airport', parkA.airport_website)} &rarr; ${linkOrText(parkB.airport || 'nearest airport', parkB.airport_website)}
+        </div>
+    `;
+
+    return `
+        <li class="trip-connector">
+            <div style="font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 0.03em;">${parkA.name} &rarr; ${parkB.name}</div>
+            ${transitHtml}
+            ${flyHtml}
+        </li>
+    `;
+}
+
+function renderTripPanel() {
+    renderTripCount();
+    const listEl = document.getElementById('trip-list');
+    const emptyMsg = document.getElementById('trip-empty-msg');
+
+    if (myTrip.length === 0) {
+        listEl.innerHTML = '';
+        emptyMsg.classList.remove('hidden');
+        return;
+    }
+    emptyMsg.classList.add('hidden');
+
+    let html = '';
+    myTrip.forEach((name, i) => {
+        const park = parksByName[name];
+        if (!park) return;
+        const safeName = name.replace(/'/g, "\\'");
+        html += `
+            <li class="trip-park-item">
+                <span>${park.name}</span>
+                <button onclick="toggleTripForPark('${safeName}')" class="trip-remove-btn">Remove</button>
+            </li>
+        `;
+
+        if (i < myTrip.length - 1) {
+            const nextPark = parksByName[myTrip[i + 1]];
+            if (nextPark) {
+                html += renderTripConnector(park, nextPark);
+            }
+        }
+    });
+    listEl.innerHTML = html;
+}
+
+window.toggleTripPanel = function () {
+    document.getElementById('trip-panel').classList.toggle('hidden');
+};
+
+window.zoomToTrip = function () {
+    if (myTrip.length === 0) return;
+    const bounds = [];
+    myTrip.forEach(name => {
+        const park = parksByName[name];
+        if (park && park.lat != null && park.lng != null) bounds.push([park.lat, park.lng]);
+    });
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
+};
+
+window.clearTrip = function () {
+    myTrip.forEach(name => highlightTripMarker(name, false));
+    myTrip = [];
+    saveTrip();
+    renderTripPanel();
+};
 
 function showParkInfo(park) {
     const parkInfo = document.getElementById('park-info');
@@ -594,6 +762,7 @@ function showParkInfo(park) {
         </div>
     `;
 
+    updateTripButton(park);
     parkInfo.classList.remove('hidden');
     document.getElementById('sidebar').classList.add('sheet-open');
 }
@@ -716,3 +885,7 @@ window.setFilterTab = function (tab, btn) {
 };
 
 updateFilterBadge();
+
+// Restore trip highlights and panel state from a previous visit
+myTrip.forEach(name => highlightTripMarker(name, true));
+renderTripPanel();
